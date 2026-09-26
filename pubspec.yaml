@@ -42,6 +42,8 @@ dependencies:
   # Typography without bundling font files
   google_fonts: ^6.2.1
   connectivity_plus: ^7.3.1
+  permission_handler: ^11.3.1
+  mobile_number: ^3.0.0
 
 dev_dependencies:
   flutter_test:

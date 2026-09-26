@@ -6,9 +6,9 @@ class AppConfig {
   /// Wi-Fi and from the Android emulator (which routes host-machine IPs
   /// through normally, unlike `localhost`/`10.0.2.2` special-casing).
   /// Swap this for a real host before release.
-  static const String host = 'http://172.20.10.3:5000';
-  static const String baseUrl = 'http://172.20.10.3:5000/api';
-  static const String healthUrl = 'http://172.20.10.3:5000/health';
+  static const String host = 'http://10.240.101.189:3001';
+  static const String baseUrl = 'http://10.240.101.189:3001/api';
+  static const String healthUrl = 'http://10.240.101.189:3001/health';
 
   /// Server origin without the `/api` prefix — statically served uploads
   /// (e.g. complaint photos, mounted at `/uploads` — see server.ts) live

@@ -3,8 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_dimens.dart';
-import '../../constants/app_routes.dart';
-import '../../constants/app_strings.dart';
 import '../../constants/app_text_styles.dart';
 import '../shared/widgets/app_button.dart';
 import '../shared/widgets/app_text_field.dart';
@@ -89,54 +87,53 @@ class _FormPanel extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Welcome back', style: AppTextStyles.displayMd),
+            Text('Welcome', style: AppTextStyles.displayMd),
             const SizedBox(height: 6),
             Text(
-              'Sign in to continue to your account',
+              'Enter your Student ID to sign in',
               style: AppTextStyles.bodyMd.copyWith(
                 color: AppColors.textSecondary,
               ),
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 32),
             AppTextField(
-              controller: controller.emailController,
-              label: AppStrings.email,
-              prefixIcon: Icons.alternate_email_rounded,
-              keyboardType: TextInputType.emailAddress,
-              validator: controller.validateEmail,
-            ),
-            const SizedBox(height: AppDimens.gapLg),
-            AppTextField(
-              controller: controller.passwordController,
-              label: AppStrings.password,
-              prefixIcon: Icons.lock_outline_rounded,
-              obscureText: true,
-              validator: controller.validatePassword,
+              controller: controller.studentIdController,
+              label: 'Student ID / Bank Code',
+              prefixIcon: Icons.badge_outlined,
+              keyboardType: TextInputType.text,
+              validator: controller.validateStudentId,
             ),
             const SizedBox(height: AppDimens.gapXl),
             Obx(
               () => AppButton(
-                label: AppStrings.login,
+                label: 'Sign In',
                 icon: Icons.arrow_forward_rounded,
                 isLoading: controller.isLoading.value,
                 onPressed: controller.login,
               ),
             ),
-            const SizedBox(height: AppDimens.gapLg),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  AppStrings.dontHaveAccount,
-                  style: AppTextStyles.bodyMd.copyWith(
-                    color: AppColors.textSecondary,
+            const SizedBox(height: 28),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.headerBlue.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.sim_card_outlined, color: AppColors.headerBlue, size: 22),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Auto-login will automatically authenticate when your registered SIM card is detected.',
+                      style: AppTextStyles.bodySm.copyWith(
+                        color: AppColors.textSecondary,
+                        height: 1.3,
+                      ),
+                    ),
                   ),
-                ),
-                TextButton(
-                  onPressed: () => Get.toNamed(Routes.register),
-                  child: const Text(AppStrings.createAccount),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),

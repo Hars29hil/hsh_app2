@@ -8,6 +8,20 @@ import '../../responses/authentication/auth_session_response.dart';
 class AuthRepository {
   final Dio _dio = Get.find<ApiClient>().dio;
 
+  
+  Future<AuthSessionResponse> autoLogin(List<String> simNumbers) async {
+    try {
+      final response = await _dio.post('/auth/auto-login', data: {
+        'sim_numbers': simNumbers,
+      });
+      final token = (response.data['data']?['token'] ?? response.data['token']) as String;
+      final user = (response.data['data']?['user'] ?? response.data['user'] ?? response.data['data']) as Map<String, dynamic>;
+      return AuthSessionResponse.fromJson(user, token: token);
+    } on DioException catch (e) {
+      throw ApiException(_message(e), statusCode: e.response?.statusCode);
+    }
+  }
+
   Future<AuthSessionResponse> login(LoginRequest request) async {
     try {
       final response = await _dio.post('/auth/login', data: request.toJson());
