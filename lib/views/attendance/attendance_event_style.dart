@@ -28,12 +28,22 @@ class AttendanceEventStyle {
       case AttendanceType.aarti:
         return AttendanceEventStyle(
           type: AttendanceType.aarti,
-          label: 'Aarti',
+          label: 'Aarti Attendance',
           emoji: '🪔',
           icon: Icons.local_fire_department_rounded,
           primaryColor: AppColors.warningOrange,
           softBackgroundColor: AppColors.warningOrange.withValues(alpha: 0.12),
-          timingHint: 'Morning session (05:00 AM – 11:00 AM)',
+          timingHint: '07:00 – 19:30',
+        );
+      case AttendanceType.morning:
+        return AttendanceEventStyle(
+          type: AttendanceType.morning,
+          label: 'Morning Attendance',
+          emoji: '🌅',
+          icon: Icons.local_fire_department_rounded,
+          primaryColor: AppColors.warningOrange,
+          softBackgroundColor: AppColors.warningOrange.withValues(alpha: 0.12),
+          timingHint: '06:00 – 07:00',
         );
       case AttendanceType.lunch:
         return AttendanceEventStyle(
@@ -58,12 +68,12 @@ class AttendanceEventStyle {
       case AttendanceType.night:
         return const AttendanceEventStyle(
           type: AttendanceType.night,
-          label: 'Night Check-in',
+          label: 'Night Attendance',
           emoji: '🌙',
           icon: Icons.bedtime_rounded,
           primaryColor: AppColors.headerBlue,
           softBackgroundColor: AppColors.surfaceMuted,
-          timingHint: 'Night check-in (09:00 PM – 05:00 AM)',
+          timingHint: '22:30 – 23:05',
         );
       case AttendanceType.sabha:
         return AttendanceEventStyle(
@@ -86,8 +96,12 @@ class AttendanceEventStyle {
     final minute = dt.minute;
     final totalMinutes = hour * 60 + minute;
 
-    // 05:00 to 11:00 -> Aarti
-    if (totalMinutes >= 5 * 60 && totalMinutes < 11 * 60) {
+    // 05:00 to 07:30 -> Morning Attendance
+    if (totalMinutes >= 5 * 60 && totalMinutes < 7 * 60 + 30) {
+      return AttendanceType.morning;
+    }
+    // 07:30 to 11:00 -> Aarti
+    if (totalMinutes >= 7 * 60 + 30 && totalMinutes < 11 * 60) {
       return AttendanceType.aarti;
     }
     // 11:00 to 16:00 -> Lunch

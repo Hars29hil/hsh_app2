@@ -25,6 +25,10 @@ class SessionStore {
   static const _kEmail = 'user_email';
   static const _kName = 'user_name';
   static const _kRoom = 'student_room';
+  static const _kPhone = 'user_phone';
+  static const _kStudentCode = 'user_student_code';
+  static const _kBloodGroup = 'student_blood_group';
+  static const _kVehicle = 'student_vehicle';
 
   static const _timeout = Duration(seconds: 5);
 
@@ -34,6 +38,10 @@ class SessionStore {
   String? _cachedName;
   String? _cachedAadhar;
   String? _cachedRoom;
+  String? _cachedPhone;
+  String? _cachedStudentCode;
+  String? _cachedBloodGroup;
+  String? _cachedVehicle;
 
   /// Synchronous access to the currently loaded token in memory.
   String? get currentToken => _cachedToken;
@@ -66,19 +74,42 @@ class SessionStore {
     required UserRole role,
     required String email,
     required String name,
+    String? phone,
+    String? studentCode,
+    String? aadhar,
+    String? room,
   }) async {
     _cachedToken = token;
     _cachedRole = role;
     _cachedEmail = email;
     _cachedName = name;
+    if (phone != null && phone.isNotEmpty) _cachedPhone = phone;
+    if (studentCode != null && studentCode.isNotEmpty) {
+      _cachedStudentCode = studentCode;
+    }
+    if (aadhar != null && aadhar.isNotEmpty) _cachedAadhar = aadhar;
+    if (room != null && room.isNotEmpty) _cachedRoom = room;
 
     await clearAadhar();
-    await Future.wait([
+    final writes = <Future<void>>[
       _write(_kToken, token),
       _write(_kRole, role.apiValue),
       _write(_kEmail, email),
       _write(_kName, name),
-    ]);
+    ];
+    if (phone != null && phone.isNotEmpty) {
+      writes.add(_write(_kPhone, phone));
+    }
+    if (studentCode != null && studentCode.isNotEmpty) {
+      writes.add(_write(_kStudentCode, studentCode));
+    }
+    if (aadhar != null && aadhar.isNotEmpty) {
+      writes.add(_write(_kAadhar, aadhar));
+    }
+    if (room != null && room.isNotEmpty) {
+      writes.add(_write(_kRoom, room));
+    }
+    await Future.wait(writes);
   }
 
   Future<void> clearAadhar() async {
@@ -92,14 +123,13 @@ class SessionStore {
     }
   }
 
-  Future<String?> get token => _read(_kToken);
-  // Future<String?> get token async {
-  //   if (_cachedToken != null && _cachedToken!.isNotEmpty) {
-  //     return _cachedToken;
-  //   }
-  //   _cachedToken = await _read(_kToken);
-  //   return _cachedToken;
-  // }
+  Future<String?> get token async {
+    if (_cachedToken != null && _cachedToken!.isNotEmpty) {
+      return _cachedToken;
+    }
+    _cachedToken = await _read(_kToken);
+    return _cachedToken;
+  }
 
   Future<UserRole> get role async {
     if (_cachedRole != null) return _cachedRole!;
@@ -118,6 +148,50 @@ class SessionStore {
     if (_cachedName != null) return _cachedName;
     _cachedName = await _read(_kName);
     return _cachedName;
+  }
+
+  Future<void> cachePhone(String phone) {
+    _cachedPhone = phone;
+    return _write(_kPhone, phone);
+  }
+
+  Future<String?> get cachedPhone async {
+    if (_cachedPhone != null) return _cachedPhone;
+    _cachedPhone = await _read(_kPhone);
+    return _cachedPhone;
+  }
+
+  Future<void> cacheStudentCode(String code) {
+    _cachedStudentCode = code;
+    return _write(_kStudentCode, code);
+  }
+
+  Future<String?> get cachedStudentCode async {
+    if (_cachedStudentCode != null) return _cachedStudentCode;
+    _cachedStudentCode = await _read(_kStudentCode);
+    return _cachedStudentCode;
+  }
+
+  Future<void> cacheBloodGroup(String bg) {
+    _cachedBloodGroup = bg;
+    return _write(_kBloodGroup, bg);
+  }
+
+  Future<String?> get cachedBloodGroup async {
+    if (_cachedBloodGroup != null) return _cachedBloodGroup;
+    _cachedBloodGroup = await _read(_kBloodGroup);
+    return _cachedBloodGroup;
+  }
+
+  Future<void> cacheVehicleNumber(String vehicle) {
+    _cachedVehicle = vehicle;
+    return _write(_kVehicle, vehicle);
+  }
+
+  Future<String?> get cachedVehicleNumber async {
+    if (_cachedVehicle != null) return _cachedVehicle;
+    _cachedVehicle = await _read(_kVehicle);
+    return _cachedVehicle;
   }
 
   Future<void> cacheAadhar(String aadhar) {
@@ -151,6 +225,10 @@ class SessionStore {
     _cachedName = null;
     _cachedAadhar = null;
     _cachedRoom = null;
+    _cachedPhone = null;
+    _cachedStudentCode = null;
+    _cachedBloodGroup = null;
+    _cachedVehicle = null;
 
     try {
       await _storage.deleteAll().timeout(_timeout);
@@ -162,4 +240,3 @@ class SessionStore {
     }
   }
 }
-

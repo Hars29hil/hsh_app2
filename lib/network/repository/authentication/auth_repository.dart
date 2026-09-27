@@ -8,14 +8,15 @@ import '../../responses/authentication/auth_session_response.dart';
 class AuthRepository {
   final Dio _dio = Get.find<ApiClient>().dio;
 
-  
   Future<AuthSessionResponse> autoLogin(List<String> simNumbers) async {
     try {
       final response = await _dio.post('/auth/auto-login', data: {
         'sim_numbers': simNumbers,
       });
-      final token = (response.data['data']?['token'] ?? response.data['token']) as String;
-      final user = (response.data['data']?['user'] ?? response.data['user'] ?? response.data['data']) as Map<String, dynamic>;
+      final body = response.data;
+      final data = body is Map && body['data'] is Map ? body['data'] as Map<String, dynamic> : (body is Map ? body as Map<String, dynamic> : <String, dynamic>{});
+      final token = (data['token'] ?? body['token'] ?? '').toString();
+      final user = (data['user'] ?? data) as Map<String, dynamic>;
       return AuthSessionResponse.fromJson(user, token: token);
     } on DioException catch (e) {
       throw ApiException(_message(e), statusCode: e.response?.statusCode);
@@ -25,8 +26,10 @@ class AuthRepository {
   Future<AuthSessionResponse> login(LoginRequest request) async {
     try {
       final response = await _dio.post('/auth/login', data: request.toJson());
-      final token = response.data['token'] as String;
-      final user = response.data['data']['user'] as Map<String, dynamic>;
+      final body = response.data;
+      final data = body is Map && body['data'] is Map ? body['data'] as Map<String, dynamic> : (body is Map ? body as Map<String, dynamic> : <String, dynamic>{});
+      final token = (data['token'] ?? body['token'] ?? '').toString();
+      final user = (data['user'] ?? data) as Map<String, dynamic>;
       return AuthSessionResponse.fromJson(user, token: token);
     } on DioException catch (e) {
       throw ApiException(_message(e), statusCode: e.response?.statusCode);
@@ -56,7 +59,9 @@ class AuthRepository {
         '/auth/me',
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
-      final user = response.data['data']['user'] as Map<String, dynamic>;
+      final body = response.data;
+      final data = body is Map && body['data'] is Map ? body['data'] as Map<String, dynamic> : (body is Map ? body as Map<String, dynamic> : <String, dynamic>{});
+      final user = (data['user'] ?? data) as Map<String, dynamic>;
       return AuthSessionResponse.fromJson(user, token: token);
     } on DioException {
       return null;

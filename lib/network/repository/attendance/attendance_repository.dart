@@ -100,12 +100,267 @@ class AttendanceRepository {
     }
   }
 
-  /// Student self-mark attendance via dynamic QR scan or direct button
-  /// `POST /api/attendance`
+  static const List<Map<String, String>> defaultSessionConfigs = [
+    {
+      'key': 'aarti',
+      'name': 'Aarti Attendance',
+      'icon': 'fire',
+      'defaultStart': '18:45',
+      'defaultEnd': '19:20',
+    },
+    {
+      'key': 'morning',
+      'name': 'Morning Attendance',
+      'icon': 'fire',
+      'defaultStart': '06:00',
+      'defaultEnd': '07:00',
+    },
+    {
+      'key': 'lunch',
+      'name': 'Lunch Attendance',
+      'icon': 'lunch',
+      'defaultStart': '11:00',
+      'defaultEnd': '16:00',
+    },
+    {
+      'key': 'dinner',
+      'name': 'Dinner Attendance',
+      'icon': 'dinner',
+      'defaultStart': '16:00',
+      'defaultEnd': '21:00',
+    },
+    {
+      'key': 'night',
+      'name': 'Night Attendance',
+      'icon': 'moon',
+      'defaultStart': '22:30',
+      'defaultEnd': '23:05',
+    },
+    {
+      'key': 'sabha',
+      'name': 'Sabha Attendance',
+      'icon': 'groups',
+      'defaultStart': '18:00',
+      'defaultEnd': '20:00',
+    },
+  ];
+
+  /// Fetch all live attendance session schedules directly from
+  /// https://attendentsnews.hpys.in/api/schedule-data
+  Future<List<AttendanceScheduleItem>> fetchAttendanceSchedules({
+    List<AttendanceScheduleItem>? existingSchedules,
+  }) async {
+    try {
+      final dio = Dio(
+        BaseOptions(
+          connectTimeout: const Duration(seconds: 8),
+          receiveTimeout: const Duration(seconds: 8),
+        ),
+      );
+
+      final res = await dio.get(AppConfig.attendanceScheduleUrl);
+
+      List<dynamic>? rawList;
+      if (res.data is List) {
+        rawList = res.data as List;
+      } else if (res.data is Map && res.data['data'] is List) {
+        rawList = res.data['data'] as List;
+      }
+
+      if (rawList != null && rawList.isNotEmpty) {
+        final items = <AttendanceScheduleItem>[];
+        for (final entry in rawList) {
+          final map = entry is Map<String, dynamic>
+              ? entry
+              : (entry is Map ? Map<String, dynamic>.from(entry) : null);
+          if (map == null) continue;
+
+          final isActive = map['is_active'];
+          if (isActive == false || isActive == 0 || isActive == '0') {
+            continue;
+          }
+
+          items.add(AttendanceScheduleItem.fromJson(map));
+        }
+
+        if (items.isNotEmpty) {
+          items.sort((a, b) => a.startTime.compareTo(b.startTime));
+          return items;
+        }
+      }
+    } catch (e) {
+      developer.log('fetchAttendanceSchedules from schedule-data error: $e', name: 'AttendanceRepo');
+    }
+
+    // Fallback: try per-type query if endpoint accepts query parameters
+    final configsMap = <String, Map<String, String>>{};
+    for (final cfg in defaultSessionConfigs) {
+      configsMap[cfg['key']!] = Map<String, String>.from(cfg);
+    }
+
+    if (existingSchedules != null && existingSchedules.isNotEmpty) {
+      for (final item in existingSchedules) {
+        configsMap[item.sessionKey] = {
+          'key': item.sessionKey,
+          'name': item.sessionName,
+          'icon': item.iconName,
+          'defaultStart': item.startTime,
+          'defaultEnd': item.endTime,
+        };
+      }
+    }
+
+    try {
+      final dio = Dio(
+        BaseOptions(
+          connectTimeout: const Duration(seconds: 6),
+          receiveTimeout: const Duration(seconds: 6),
+        ),
+      );
+
+      final schedules = await Future.wait(
+        configsMap.values.map((cfg) async {
+          final key = cfg['key']!;
+          final name = cfg['name']!;
+          final icon = cfg['icon']!;
+          String start = cfg['defaultStart']!;
+          String end = cfg['defaultEnd']!;
+          bool hasValidApiTiming = false;
+
+          try {
+            final res = await dio.get(
+              AppConfig.attendanceScheduleUrl,
+              queryParameters: {'type': key},
+            );
+
+            if (res.data is Map && res.data['success'] == true && res.data['data'] is Map) {
+              final data = res.data['data'] as Map;
+              final sTime = data['start_time']?.toString();
+              final eTime = data['end_time']?.toString();
+
+              if (sTime != null && sTime.isNotEmpty && sTime != '00:00' && sTime != '00:00:00') {
+                start = sTime.length >= 5 ? sTime.substring(0, 5) : sTime;
+                hasValidApiTiming = true;
+              }
+              if (eTime != null && eTime.isNotEmpty && eTime != '00:00' && eTime != '00:00:00') {
+                end = eTime.length >= 5 ? eTime.substring(0, 5) : eTime;
+                hasValidApiTiming = true;
+              }
+            }
+          } catch (_) {}
+
+          if (!hasValidApiTiming) {
+            return null;
+          }
+
+          return AttendanceScheduleItem(
+            sessionKey: key,
+            sessionName: name,
+            iconName: icon,
+            startTime: start,
+            endTime: end,
+          );
+        }),
+      );
+
+      final activeSchedules = schedules.whereType<AttendanceScheduleItem>().toList();
+      if (activeSchedules.isNotEmpty) {
+        activeSchedules.sort((a, b) => a.startTime.compareTo(b.startTime));
+        return activeSchedules;
+      }
+    } catch (e) {
+      developer.log('fetchAttendanceSchedules fallback error: $e', name: 'AttendanceRepo');
+    }
+
+    return const [
+      AttendanceScheduleItem(
+        sessionKey: 'aarti',
+        sessionName: 'Aarti',
+        iconName: 'users',
+        startTime: '18:45',
+        endTime: '19:20',
+        lateTime: '19:10',
+      ),
+      AttendanceScheduleItem(
+        sessionKey: 'weekly_assembly',
+        sessionName: 'Weekly Assembly',
+        iconName: 'users',
+        startTime: '20:50',
+        endTime: '21:20',
+        lateTime: '21:16',
+      ),
+      AttendanceScheduleItem(
+        sessionKey: 'night',
+        sessionName: 'Night',
+        iconName: 'moon',
+        startTime: '22:30',
+        endTime: '23:05',
+      ),
+    ];
+  }
+
+  /// Get student's live attendance status & all daily session schedules
+  /// `GET /api/attendance/my-status`
+  Future<StudentAttendanceStatus> getStudentStatus() async {
+    try {
+      final response = await _dio.get(
+        '/attendance/my-status',
+        options: await _authOptions(),
+      );
+      final rawData = response.data['data'];
+      if (rawData is Map) {
+        final status = StudentAttendanceStatus.fromJson(Map<String, dynamic>.from(rawData));
+        if (status.alreadyMarked && status.activeType != null) {
+          _mockMarkedToday[status.activeType!] = DateTime.now();
+        }
+        return status;
+      }
+    } catch (e) {
+      developer.log('Error fetching student status: $e', name: 'AttendanceRepo');
+    }
+
+    // Fallback default schedules matching actual configured sessions
+    final fallbackSchedules = [
+      const AttendanceScheduleItem(
+        sessionKey: 'aarti',
+        sessionName: 'Aarti Attendance',
+        iconName: 'fire',
+        startTime: '07:00',
+        endTime: '19:30',
+      ),
+      const AttendanceScheduleItem(
+        sessionKey: 'morning',
+        sessionName: 'Morning Attendance',
+        iconName: 'fire',
+        startTime: '06:00',
+        endTime: '07:00',
+      ),
+      const AttendanceScheduleItem(
+        sessionKey: 'night',
+        sessionName: 'Night Attendance',
+        iconName: 'moon',
+        startTime: '22:30',
+        endTime: '23:05',
+      ),
+    ];
+
+    return StudentAttendanceStatus(
+      alreadyMarked: false,
+      attendanceActive: true,
+      activeSessionType: 'night',
+      sessionName: 'Night Attendance',
+      startTime: '22:30',
+      endTime: '23:05',
+      allSchedules: fallbackSchedules,
+    );
+  }
+
+  /// Student self-mark attendance via dynamic QR scan, BLE proximity, or direct button
+  /// `POST /api/attendance/mark`
   Future<AttendanceRecord> mark(MarkAttendanceRequest request) async {
     try {
       final response = await _dio.post(
-        '/attendance',
+        '/attendance/mark',
         data: request.toJson(),
         options: await _authOptions(),
       );
@@ -167,7 +422,7 @@ class AttendanceRepository {
     }
   }
 
-  /// Query today's attendance status across all 5 events
+  /// Query today's attendance status across all events
   Future<Map<AttendanceType, DateTime?>> todayStatus() async {
     final statusMap = <AttendanceType, DateTime?>{
       for (final t in AttendanceType.values) t: _mockMarkedToday[t],

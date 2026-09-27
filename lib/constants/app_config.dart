@@ -6,9 +6,19 @@ class AppConfig {
   /// Wi-Fi and from the Android emulator (which routes host-machine IPs
   /// through normally, unlike `localhost`/`10.0.2.2` special-casing).
   /// Swap this for a real host before release.
-  static const String host = 'http://10.240.101.189:3001';
-  static const String baseUrl = 'http://10.240.101.189:3001/api';
-  static const String healthUrl = 'http://10.240.101.189:3001/health';
+  static const String host = 'https://hshbackend.hpys.in';
+  static const String baseUrl = 'https://hshbackend.hpys.in/api';
+  static const String healthUrl = 'https://hshbackend.hpys.in/';
+
+  /// Live hosted attendance schedule endpoint
+  static const String attendanceScheduleUrl =
+      'https://attendentsnews.hpys.in/api/schedule-data';
+
+  /// Live external student basic details endpoint
+  static const String studentBasicDetailsUrl =
+      'https://api.avdvvn.org/public/getStudentBasicDetails';
+  static const String studentBasicDetailsAuthToken =
+      'aF92Kx7QmN4Lp8Vz';
 
   /// Server origin without the `/api` prefix — statically served uploads
   /// (e.g. complaint photos, mounted at `/uploads` — see server.ts) live

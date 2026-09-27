@@ -14,6 +14,7 @@ class StudentProfileModel {
   final AdmissionStatus status;
   final String subStatus;
   final String bloodGroup;
+  final String dob;
 
   final String address;
   final String pinCode;
@@ -48,6 +49,7 @@ class StudentProfileModel {
     this.status = AdmissionStatus.active,
     this.subStatus = '',
     this.bloodGroup = '',
+    this.dob = '',
     this.address = '',
     this.pinCode = '',
     this.fatherFirstName = '',
@@ -72,62 +74,128 @@ class StudentProfileModel {
     lastName,
   ].where((e) => e.trim().isNotEmpty).join(' ');
 
-  /// `GET /students/:aadhar` → `data.student` (API_HANDOFF.md §5.1). Every
-  /// field is defaulted so a sparse response (or one missing a field this
-  /// app doesn't know about yet) never throws.
-  /// Parses the backend `data.student` object from GET /students/:aadhar.
-  ///
-  /// Key mappings (backend → model):
-  ///   whatsAppNumber → whatsappNumber
-  ///   cricket        → playsCricket
-  ///   badminton      → playsBadminton
-  ///   gym            → goesToGym
-  ///   status string  → AdmissionStatus enum
+  /// Parses student data from backend or external AVD API.
   factory StudentProfileModel.fromJson(Map<String, dynamic> json) {
     return StudentProfileModel(
-      aadhar: json['aadhar']?.toString() ?? '',
-      firstName: json['firstName']?.toString() ?? '',
-      middleName: json['middleName']?.toString() ?? '',
-      lastName: json['lastName']?.toString() ?? '',
-      phone: json['phone']?.toString() ?? '',
-      whatsappNumber: json['whatsAppNumber']?.toString() ?? '',
-      email: json['email']?.toString() ?? '',
-      room: json['room']?.toString() ?? '',
-      status: _statusFromApi(json['status']?.toString()),
-      subStatus: json['subStatus']?.toString() ?? '',
-      bloodGroup: json['bloodGroup']?.toString() ?? '',
-      address: json['address']?.toString() ?? '',
-      pinCode: json['pinCode']?.toString() ?? '',
-      fatherFirstName: json['fatherFirstName']?.toString() ?? '',
-      fatherPhone: json['fatherPhone']?.toString() ?? '',
-      fatherProfession: json['fatherProfession']?.toString() ?? '',
-      motherFirstName: json['motherFirstName']?.toString() ?? '',
-      motherPhone: json['motherPhone']?.toString() ?? '',
+      aadhar: json['aadhar']?.toString().trim() ?? '',
+      firstName: json['firstName']?.toString().trim() ?? '',
+      middleName: json['middleName']?.toString().trim() ?? '',
+      lastName: json['lastName']?.toString().trim() ?? '',
+      phone: json['phone']?.toString().trim() ??
+          json['phone_number']?.toString().trim() ??
+          '',
+      whatsappNumber: json['whatsAppNumber']?.toString().trim() ??
+          json['whatsappNumber']?.toString().trim() ??
+          json['whats_app_number']?.toString().trim() ??
+          '',
+      email: json['email']?.toString().trim() ?? '',
+      room: json['room']?.toString().trim() ??
+          json['room_number']?.toString().trim() ??
+          '',
+      status: statusFromApi(json['status']?.toString()),
+      subStatus: json['subStatus']?.toString().trim() ?? '',
+      bloodGroup: json['bloodGroup']?.toString().trim() ??
+          json['blood_group']?.toString().trim() ??
+          '',
+      dob: json['dob']?.toString().trim() ??
+          json['date_of_birth']?.toString().trim() ??
+          '',
+      address: json['address']?.toString().trim() ?? '',
+      pinCode: json['pinCode']?.toString().trim() ??
+          json['pin_code']?.toString().trim() ??
+          '',
+      fatherFirstName: json['fatherFirstName']?.toString().trim() ?? '',
+      fatherPhone: json['fatherPhone']?.toString().trim() ??
+          json['father_phone']?.toString().trim() ??
+          '',
+      fatherProfession: json['fatherProfession']?.toString().trim() ?? '',
+      motherFirstName: json['motherFirstName']?.toString().trim() ?? '',
+      motherPhone: json['motherPhone']?.toString().trim() ??
+          json['mother_phone']?.toString().trim() ??
+          '',
       playsCricket: json['cricket'] as bool? ?? false,
       playsBadminton: json['badminton'] as bool? ?? false,
       goesToGym: json['gym'] as bool? ?? false,
-      vehicleNumber: json['vehicleNumber']?.toString() ?? '',
-      category: json['category']?.toString() ?? '',
-      groupName: json['groupName']?.toString() ?? '',
-      bankCode: json['bankCode']?.toString() ?? '',
+      vehicleNumber: json['vehicleNumber']?.toString().trim() ??
+          json['vehicle_number']?.toString().trim() ??
+          '',
+      category: json['category']?.toString().trim() ?? '',
+      groupName: json['groupName']?.toString().trim() ??
+          json['group_name']?.toString().trim() ??
+          '',
+      bankCode: json['bankCode']?.toString().trim() ??
+          json['bank_code']?.toString().trim() ??
+          '',
       bankCodeChecked: json['bankCodeChecked'] as bool? ?? false,
-      notes: json['notes']?.toString() ?? '',
+      notes: json['notes']?.toString().trim() ?? '',
     );
   }
 
-  static AdmissionStatus _statusFromApi(String? value) {
-    switch (value) {
+  static AdmissionStatus statusFromApi(String? value) {
+    final lower = value?.toLowerCase().trim();
+    switch (lower) {
       case 'staying':
       case 'active':
+      case 'renewed-admission':
+      case 'new-admission':
         return AdmissionStatus.active;
       case 'left':
+      case 'rejected-admission':
         return AdmissionStatus.left;
       case 'pending':
-      case 'pendingApproval':
+      case 'pendingapproval':
+      case 'pending-admission':
         return AdmissionStatus.pendingApproval;
       default:
         return AdmissionStatus.active;
     }
+  }
+
+  StudentProfileModel mergeWith(StudentProfileModel other) {
+    return StudentProfileModel(
+      aadhar: other.aadhar.isNotEmpty ? other.aadhar : aadhar,
+      firstName: other.firstName.isNotEmpty ? other.firstName : firstName,
+      middleName: other.middleName.isNotEmpty ? other.middleName : middleName,
+      lastName: other.lastName.isNotEmpty ? other.lastName : lastName,
+      phone: other.phone.isNotEmpty ? other.phone : phone,
+      whatsappNumber: other.whatsappNumber.isNotEmpty
+          ? other.whatsappNumber
+          : whatsappNumber,
+      email: other.email.isNotEmpty ? other.email : email,
+      room: other.room.isNotEmpty ? other.room : room,
+      status: other.status,
+      subStatus: other.subStatus.isNotEmpty ? other.subStatus : subStatus,
+      bloodGroup: other.bloodGroup.isNotEmpty ? other.bloodGroup : bloodGroup,
+      dob: other.dob.isNotEmpty ? other.dob : dob,
+      address: other.address.isNotEmpty ? other.address : address,
+      pinCode: other.pinCode.isNotEmpty ? other.pinCode : pinCode,
+      fatherFirstName: other.fatherFirstName.isNotEmpty
+          ? other.fatherFirstName
+          : fatherFirstName,
+      fatherPhone: other.fatherPhone.isNotEmpty
+          ? other.fatherPhone
+          : fatherPhone,
+      fatherProfession: other.fatherProfession.isNotEmpty
+          ? other.fatherProfession
+          : fatherProfession,
+      motherFirstName: other.motherFirstName.isNotEmpty
+          ? other.motherFirstName
+          : motherFirstName,
+      motherPhone: other.motherPhone.isNotEmpty
+          ? other.motherPhone
+          : motherPhone,
+      playsCricket: other.playsCricket || playsCricket,
+      playsBadminton: other.playsBadminton || playsBadminton,
+      goesToGym: other.goesToGym || goesToGym,
+      vehicleNumber: other.vehicleNumber.isNotEmpty
+          ? other.vehicleNumber
+          : vehicleNumber,
+      category: other.category.isNotEmpty ? other.category : category,
+      groupName: other.groupName.isNotEmpty ? other.groupName : groupName,
+      bankCode: other.bankCode.isNotEmpty ? other.bankCode : bankCode,
+      bankCodeChecked: other.bankCodeChecked || bankCodeChecked,
+      notes: other.notes.isNotEmpty ? other.notes : notes,
+    );
   }
 
   /// Fields a student is never allowed to edit on their own profile
@@ -161,6 +229,7 @@ class StudentProfileModel {
     String? phone,
     String? whatsappNumber,
     String? bloodGroup,
+    String? dob,
     String? address,
     String? pinCode,
     String? fatherFirstName,
@@ -185,6 +254,7 @@ class StudentProfileModel {
       status: status,
       subStatus: subStatus,
       bloodGroup: bloodGroup ?? this.bloodGroup,
+      dob: dob ?? this.dob,
       address: address ?? this.address,
       pinCode: pinCode ?? this.pinCode,
       fatherFirstName: fatherFirstName ?? this.fatherFirstName,

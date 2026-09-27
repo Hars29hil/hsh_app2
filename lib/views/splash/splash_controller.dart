@@ -1,6 +1,7 @@
 import 'package:get/get.dart';
 import '../../common_enums/user_role.dart';
 import '../../constants/app_routes.dart';
+import '../../network/api_client.dart';
 import '../../network/repository/authentication/auth_repository.dart';
 import '../../storage/session_store.dart';
 
@@ -22,7 +23,14 @@ class SplashController extends GetxController {
     }
 
     final token = await SessionStore.instance.token;
-    final session = await _authRepository.checkSession(token!);
+    if (token == null || token.isEmpty) {
+      await SessionStore.instance.clear();
+      Get.offAllNamed(Routes.login);
+      return;
+    }
+
+    Get.find<ApiClient>().setAuthToken(token);
+    final session = await _authRepository.checkSession(token);
     if (session == null) {
       await SessionStore.instance.clear();
       if (Get.currentRoute != Routes.login) {

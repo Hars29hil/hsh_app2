@@ -5,6 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:mobile_number/mobile_number.dart';
 import '../../common_enums/user_role.dart';
 import '../../constants/app_routes.dart';
+import '../../network/api_client.dart';
 import '../../network/api_exception.dart';
 import '../../network/repository/authentication/auth_repository.dart';
 import '../../network/request/authentication/login_request.dart';
@@ -66,11 +67,19 @@ class LoginController extends GetxController {
 
       isLoading.value = true;
       final session = await _authRepository.autoLogin(simNumbers);
+      if (session.token.isNotEmpty) {
+        Get.find<ApiClient>().setAuthToken(session.token);
+      }
       await SessionStore.instance.saveSession(
         token: session.token,
         role: session.role,
         email: session.email,
         name: session.name,
+        phone: session.phone.isNotEmpty
+            ? session.phone
+            : (simNumbers.isNotEmpty ? simNumbers.first : null),
+        studentCode: session.studentCode,
+        room: session.room,
       );
       _routeByRole(session.role);
     } catch (e) {
@@ -89,11 +98,19 @@ class LoginController extends GetxController {
           studentId: studentIdController.text.trim(),
         ),
       );
+      if (session.token.isNotEmpty) {
+        Get.find<ApiClient>().setAuthToken(session.token);
+      }
       await SessionStore.instance.saveSession(
         token: session.token,
         role: session.role,
         email: session.email,
         name: session.name,
+        phone: session.phone,
+        studentCode: session.studentCode.isNotEmpty
+            ? session.studentCode
+            : studentIdController.text.trim(),
+        room: session.room,
       );
       _routeByRole(session.role);
     } on ApiException catch (e) {

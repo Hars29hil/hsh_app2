@@ -22,16 +22,38 @@ class StudentProfileController extends GetxController
     loadProfile();
   }
 
-  Future<void> loadProfile() => guard(() async {
+  Future<void> loadProfile({bool forceRefresh = false}) => guard(() async {
+    final cachedPhone = await SessionStore.instance.cachedPhone;
+    final cachedEmail = await SessionStore.instance.email;
+    final cachedName = await SessionStore.instance.name;
+    final cachedStudentCode = await SessionStore.instance.cachedStudentCode;
+    String? aadhar = await SessionStore.instance.cachedAadhar;
+
+    if (aadhar == null || aadhar.isEmpty) {
+      try {
+        aadhar = await resolveAadhar(
+          fromFeeSummary: _feesRepository.resolveAadhar,
+          fromLaundryBalance: () async =>
+              (await _laundryRepository.balance()).studentAadhar,
+        );
+      } catch (_) {
+        // Fall back gracefully; fetchProfile will resolve from external API
+      }
+    }
+
     try {
-      final aadhar = await resolveAadhar(
-        fromFeeSummary: _feesRepository.resolveAadhar,
-        fromLaundryBalance: () async =>
-            (await _laundryRepository.balance()).studentAadhar,
+      profile.value = await _repository.fetchProfile(
+        aadhar: aadhar,
+        phone: cachedPhone,
+        email: cachedEmail,
+        studentCode: cachedStudentCode,
+        name: cachedName,
+        forceRefresh: forceRefresh,
       );
-      profile.value = await _repository.fetchProfile(aadhar);
     } catch (_) {
-      await SessionStore.instance.clearAadhar();
+      if (aadhar != null && aadhar.isNotEmpty) {
+        await SessionStore.instance.clearAadhar();
+      }
       rethrow;
     }
   });
@@ -40,7 +62,7 @@ class StudentProfileController extends GetxController
   /// load, kept as a distinct name so call sites read intent rather than
   /// implementation. (Not named `refresh()`: GetX's `ListNotifierMixin`
   /// already defines that, for forcing a `GetBuilder` rebuild.)
-  Future<void> refreshProfile() => loadProfile();
+  Future<void> refreshProfile() => loadProfile(forceRefresh: true);
 
   Future<void> logout() async {
     await SessionStore.instance.clear();

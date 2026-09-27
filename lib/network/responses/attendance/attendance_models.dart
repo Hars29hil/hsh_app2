@@ -31,11 +31,11 @@ class AttendanceRecord {
       return DateTime.now().toUtc();
     }
 
-    final rawType = json['type']?.toString() ?? 'aarti';
-    final dateVal = parseDate(json['date']);
+    final rawType = json['type']?.toString() ?? json['session_type']?.toString() ?? 'aarti';
+    final dateVal = parseDate(json['date'] ?? json['session_date'] ?? json['marked_at']);
     DateTime timeVal;
-    if (json['time'] != null) {
-      final parsedTime = parseDate(json['time']);
+    if (json['time'] != null || json['marked_at'] != null) {
+      final parsedTime = parseDate(json['time'] ?? json['marked_at']);
       if (parsedTime.year <= 1970) {
         timeVal = DateTime.utc(
           dateVal.year,
@@ -55,7 +55,7 @@ class AttendanceRecord {
 
     return AttendanceRecord(
       id: json['id'] ?? json['_id'] ?? 0,
-      aadhar: json['aadhar']?.toString(),
+      aadhar: json['aadhar']?.toString() ?? json['student_code']?.toString() ?? json['bank_code']?.toString(),
       date: dateVal,
       time: timeVal,
       type: AttendanceTypeX.fromApi(rawType),
@@ -73,6 +73,123 @@ class AttendanceRecord {
     'viaCode': viaCode,
     if (ip != null) 'ip': ip,
   };
+}
+
+/// Single schedule session configuration from `/api/schedule-data` or `/attendance/schedule`
+class AttendanceScheduleItem {
+  final int? id;
+  final String sessionKey;
+  final String sessionName;
+  final String iconName;
+  final String startTime;
+  final String endTime;
+  final String? lateTime;
+  final bool isForAllStudents;
+  final bool isActive;
+
+  const AttendanceScheduleItem({
+    this.id,
+    required this.sessionKey,
+    required this.sessionName,
+    this.iconName = 'moon',
+    required this.startTime,
+    required this.endTime,
+    this.lateTime,
+    this.isForAllStudents = true,
+    this.isActive = true,
+  });
+
+  AttendanceType get attendanceType => AttendanceTypeX.fromApi(sessionKey);
+
+  factory AttendanceScheduleItem.fromJson(Map<String, dynamic> json) {
+    final rawStart = (json['start_time'] ?? json['start'] ?? '00:00').toString();
+    final rawEnd = (json['end_time'] ?? json['end'] ?? '00:00').toString();
+    final rawLate = json['late_time']?.toString();
+
+    return AttendanceScheduleItem(
+      id: json['id'] is int
+          ? json['id'] as int
+          : int.tryParse(json['id']?.toString() ?? ''),
+      sessionKey: (json['session_key'] ?? json['key'] ?? 'aarti').toString().toLowerCase(),
+      sessionName: (json['session_name'] ?? json['name'] ?? 'Session').toString(),
+      iconName: (json['icon_name'] ?? 'moon').toString(),
+      startTime: rawStart.length >= 5 ? rawStart.substring(0, 5) : rawStart,
+      endTime: rawEnd.length >= 5 ? rawEnd.substring(0, 5) : rawEnd,
+      lateTime: rawLate != null && rawLate.isNotEmpty && rawLate != 'null'
+          ? (rawLate.length >= 5 ? rawLate.substring(0, 5) : rawLate)
+          : null,
+      isForAllStudents: json['is_for_all_students'] as bool? ?? true,
+      isActive: json['is_active'] as bool? ?? true,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    if (id != null) 'id': id,
+    'session_key': sessionKey,
+    'session_name': sessionName,
+    'icon_name': iconName,
+    'start_time': startTime,
+    'end_time': endTime,
+    if (lateTime != null) 'late_time': lateTime,
+    'is_for_all_students': isForAllStudents,
+    'is_active': isActive,
+  };
+}
+
+/// Status payload returned by `GET /api/attendance/my-status`
+class StudentAttendanceStatus {
+  final bool alreadyMarked;
+  final bool attendanceActive;
+  final String? activeSessionType;
+  final String sessionName;
+  final String startTime;
+  final String endTime;
+  final List<AttendanceScheduleItem> allSchedules;
+
+  const StudentAttendanceStatus({
+    required this.alreadyMarked,
+    required this.attendanceActive,
+    this.activeSessionType,
+    required this.sessionName,
+    required this.startTime,
+    required this.endTime,
+    required this.allSchedules,
+  });
+
+  AttendanceType? get activeType =>
+      activeSessionType != null ? AttendanceTypeX.fromApi(activeSessionType!) : null;
+
+  factory StudentAttendanceStatus.fromJson(Map<String, dynamic> json) {
+    List schedulesList = [];
+    if (json['all_schedules'] is List) {
+      schedulesList = json['all_schedules'] as List;
+    } else if (json['schedules'] is Map) {
+      final map = json['schedules'] as Map;
+      schedulesList = map.entries.map((e) {
+        final val = e.value is Map ? e.value as Map : {};
+        return {
+          'session_key': e.key,
+          'session_name': val['name'] ?? e.key.toString().toUpperCase(),
+          'start_time': val['start'] ?? '00:00',
+          'end_time': val['end'] ?? '00:00',
+        };
+      }).toList();
+    }
+
+    final parsedSchedules = schedulesList
+        .map((e) => AttendanceScheduleItem.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+
+    return StudentAttendanceStatus(
+      alreadyMarked: json['already_marked'] == true,
+      attendanceActive: json['attendance_active'] == true,
+      activeSessionType: json['active_session_type']?.toString(),
+      sessionName: (json['session_name'] ?? 'Attendance').toString(),
+      startTime: (json['start_time'] ?? '00:00').toString(),
+      endTime: (json['end_time'] ?? '00:00').toString(),
+      allSchedules: parsedSchedules,
+    );
+  }
 }
 
 /// Response returned by `GET /api/attendance/qr-token?type={type}`.

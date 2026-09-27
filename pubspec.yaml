@@ -44,6 +44,7 @@ dependencies:
   connectivity_plus: ^7.3.1
   permission_handler: ^11.3.1
   mobile_number: ^3.0.0
+  flutter_blue_plus: ^2.3.13
 
 dev_dependencies:
   flutter_test:

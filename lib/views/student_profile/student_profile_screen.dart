@@ -69,6 +69,13 @@ class StudentProfileScreen extends GetView<StudentProfileController> {
                                 value: profile.email,
                                 locked: true,
                               ),
+                              if (profile.dob.isNotEmpty)
+                                InfoRow(
+                                  icon: Icons.cake_outlined,
+                                  label: 'Date of birth',
+                                  value: profile.dob,
+                                  locked: true,
+                                ),
                               InfoRow(
                                 icon: Icons.bloodtype_outlined,
                                 label: 'Blood group',
@@ -81,6 +88,29 @@ class StudentProfileScreen extends GetView<StudentProfileController> {
                               ),
                             ],
                           ),
+                          if (profile.fatherPhone.isNotEmpty ||
+                              profile.motherPhone.isNotEmpty) ...[
+                            const SizedBox(height: AppDimens.gapXl),
+                            const SectionHeader(
+                              title: 'Parent & guardian contact',
+                            ),
+                            _DetailsCard(
+                              rows: [
+                                if (profile.fatherPhone.isNotEmpty)
+                                  InfoRow(
+                                    icon: Icons.family_restroom_outlined,
+                                    label: "Father's phone",
+                                    value: profile.fatherPhone,
+                                  ),
+                                if (profile.motherPhone.isNotEmpty)
+                                  InfoRow(
+                                    icon: Icons.family_restroom_outlined,
+                                    label: "Mother's phone",
+                                    value: profile.motherPhone,
+                                  ),
+                              ],
+                            ),
+                          ],
                           const SizedBox(height: AppDimens.gapXl),
                           const SectionHeader(title: 'Sports & fitness'),
                           _LifestyleChips(profile: profile),
@@ -150,13 +180,24 @@ class _ProfileHero extends StatelessWidget {
         spacing: AppDimens.gapSm,
         runSpacing: AppDimens.gapSm,
         children: [
-          HeaderPill(icon: Icons.meeting_room_outlined, label: profile.room),
+          if (profile.room.isNotEmpty)
+            HeaderPill(
+              icon: Icons.meeting_room_outlined,
+              label: profile.room.toLowerCase().contains('room')
+                  ? profile.room
+                  : 'Room ${profile.room}',
+            ),
           HeaderPill(
             icon: Icons.verified_outlined,
             label: profile.status.label,
           ),
           if (profile.groupName.isNotEmpty)
             HeaderPill(icon: Icons.groups_outlined, label: profile.groupName),
+          if (profile.bankCode.isNotEmpty)
+            HeaderPill(
+              icon: Icons.badge_outlined,
+              label: 'ID: ${profile.bankCode}',
+            ),
         ],
       ),
     );

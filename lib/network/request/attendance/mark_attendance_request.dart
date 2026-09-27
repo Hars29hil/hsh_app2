@@ -8,16 +8,20 @@ class MarkAttendanceRequest {
   final AttendanceType type;
   final bool viaCode;
   final String? qrToken;
+  final int? rssi; // Added for BLE proximity attendance
 
   const MarkAttendanceRequest({
     required this.type,
     this.viaCode = true,
     this.qrToken,
+    this.rssi,
   });
 
   Map<String, dynamic> toJson() => {
     'type': type.apiValue,
+    'session_type': type.apiValue,
     if (qrToken != null && qrToken!.isNotEmpty) 'qrToken': qrToken,
+    if (rssi != null) 'rssi': rssi,
     'viaCode': viaCode,
   };
 }
@@ -43,6 +47,7 @@ class MarkAttendanceOnBehalfRequest {
     final dateStr = DateFormat('yyyy-MM-dd').format(date);
     return {
       'type': type.apiValue,
+      'session_type': type.apiValue,
       if (studentId != null) 'studentId': studentId,
       if (studentAadhar != null && studentAadhar!.isNotEmpty)
         'aadhar': studentAadhar,

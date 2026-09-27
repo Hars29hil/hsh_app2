@@ -36,7 +36,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 350));
 
-    expect(find.text('Updating...'), findsOneWidget);
+    expect(find.text('Updating hostel data...'), findsOneWidget);
 
     // Complete the async delayed future
     await tester.pump(const Duration(milliseconds: 150));
