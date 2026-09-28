@@ -2,22 +2,32 @@ import 'dart:async';
 import 'dart:io';
 import 'package:get/get.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../abstracts/mixins/load_state_mixin.dart';
 import '../../common_enums/attendance_type.dart';
 import '../../network/repository/attendance/attendance_repository.dart';
 import '../../network/request/attendance/mark_attendance_request.dart';
 import '../../network/responses/attendance/attendance_models.dart';
+import '../../storage/session_store.dart';
 
 class AttendanceController extends GetxController with LoadStateMixin {
   final AttendanceRepository _repository = Get.find();
 
   static const String esp32ServiceUuid = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
 
+  // Attendance state matching reference logic
+  final alreadyMarked = false.obs;
+  final attendanceActive = false.obs;
+  final startTime = ''.obs;
+  final endTime = ''.obs;
+  final rawSchedules = <String, dynamic>{}.obs;
+
   final todayStatus = <AttendanceType, DateTime?>{}.obs;
   final studentStatus = Rxn<StudentAttendanceStatus>();
   final schedulesList = <AttendanceScheduleItem>[].obs;
   final markingType = Rxn<AttendanceType>();
+  final isMarking = false.obs;
 
   @override
   void onInit() {
@@ -25,13 +35,85 @@ class AttendanceController extends GetxController with LoadStateMixin {
     load();
   }
 
+  String friendlyError(dynamic e) {
+    final msg = e.toString().toLowerCase();
+
+    if (msg.contains('already_marked') ||
+        msg.contains('already marked') ||
+        msg.contains('student_already_marked')) {
+      return 'Your attendance is already marked for today. Come back tomorrow!';
+    }
+    if (msg.contains('device_already_used')) {
+      return 'This device has already been used to mark attendance today.';
+    }
+    if (msg.contains('no_active_session') ||
+        msg.contains('no active') ||
+        msg.contains('attendance is closed') ||
+        msg.contains('session has ended')) {
+      return 'Attendance is not open right now. Please check the schedule and try again during the allowed time.';
+    }
+    if (msg.contains('session has not started')) {
+      return 'Attendance has not started yet. Please wait for the scheduled time.';
+    }
+    if (msg.contains('bluetooth') ||
+        msg.contains('ble') ||
+        msg.contains('gatt')) {
+      return 'Could not connect to the attendance beacon. Make sure Bluetooth is turned on and you are close to the ESP-32.';
+    }
+    if (msg.contains('permission')) {
+      return 'Bluetooth and Location permissions are needed. Please allow them in your phone settings.';
+    }
+    if (msg.contains('turn on bluetooth') || msg.contains('adapter')) {
+      return 'Please turn on Bluetooth to mark your attendance.';
+    }
+    if (msg.contains('timeout') || msg.contains('timed out')) {
+      return 'Connection timed out. Please move closer to the floor device and try again.';
+    }
+    if (msg.contains('could not find') || msg.contains('esp32')) {
+      return 'Could not find the attendance beacon. Make sure you are close to an active ESP-32 device and try again.';
+    }
+    if (msg.contains('floor')) {
+      return 'Please go near your hostel ESP-32 beacon and try again.';
+    }
+    if (msg.contains('network') ||
+        msg.contains('socket') ||
+        msg.contains('connection refused')) {
+      return 'Could not connect to the server. Please check your internet connection.';
+    }
+
+    String cleaned = e
+        .toString()
+        .replaceAll('Exception: ', '')
+        .replaceAll('exception: ', '');
+    if (cleaned.contains('(') ||
+        cleaned.contains('/') ||
+        cleaned.contains('.') && cleaned.length > 80) {
+      return 'Something went wrong. Please try again or contact your floor leader for help.';
+    }
+    return cleaned;
+  }
+
   Future<void> load() => guard(() async {
     try {
+      // Check local cached attendance for today
+      try {
+        final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+        final markedDate = await SessionStore.instance.lastAttendanceDate;
+        if (markedDate == today) {
+          alreadyMarked.value = true;
+        }
+      } catch (_) {}
+
       // 1. Fetch student status (mark status, active session, and DB schedules if authenticated)
       final sStatus = await _repository.getStudentStatus();
       studentStatus.value = sStatus;
+      alreadyMarked.value = sStatus.alreadyMarked || alreadyMarked.value;
+      attendanceActive.value = sStatus.attendanceActive;
+      startTime.value = sStatus.startTime;
+      endTime.value = sStatus.endTime;
+      rawSchedules.assignAll(sStatus.rawSchedules);
 
-      // 2. Fetch all live attendance schedules from https://attendentsnews.hpys.in/api/attendance/schedule
+      // 2. Fetch all live attendance schedules from https://attendentsnews.hpys.in/api/schedule-data
       final liveSchedules = await _repository.fetchAttendanceSchedules(
         existingSchedules: sStatus.allSchedules,
       );
@@ -42,7 +124,7 @@ class AttendanceController extends GetxController with LoadStateMixin {
         schedulesList.assignAll(sStatus.allSchedules);
       }
 
-      if (sStatus.alreadyMarked && sStatus.activeType != null) {
+      if (alreadyMarked.value && sStatus.activeType != null) {
         todayStatus[sStatus.activeType!] = DateTime.now();
       }
     } catch (_) {}
@@ -74,11 +156,10 @@ class AttendanceController extends GetxController with LoadStateMixin {
     }
   }
 
-  /// Mark attendance using BLE beacon proximity detection
-  /// No connection or pairing required — verifies proximity via advertising packets.
   Future<AttendanceRecord?> markWithBle(AttendanceType type) async {
-    if (markingType.value != null) return null; // Already marking
+    if (markingType.value != null || isMarking.value) return null; // Already marking
     markingType.value = type;
+    isMarking.value = true;
 
     try {
       // 1. Request Bluetooth & Location Permissions gracefully across Android versions
@@ -169,7 +250,7 @@ class AttendanceController extends GetxController with LoadStateMixin {
 
       if (!deviceFound) {
         throw Exception(
-          'Could not detect floor beacon. Please move closer to the ESP-32 device on your floor.',
+          'Could not find the attendance beacon. Make sure you are close to an active ESP-32 device and try again.',
         );
       }
 
@@ -182,17 +263,26 @@ class AttendanceController extends GetxController with LoadStateMixin {
         ),
       );
 
+      // 6. Save attendance success locally and update state
+      try {
+        final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+        await SessionStore.instance.saveLastAttendanceDate(today);
+      } catch (_) {}
+
+      alreadyMarked.value = true;
       todayStatus[type] = result.time;
       todayStatus.refresh();
       await load();
       return result;
     } finally {
       markingType.value = null;
+      isMarking.value = false;
     }
   }
 
   void onAttendanceMarked(AttendanceRecord record) {
     todayStatus[record.type] = record.time;
     todayStatus.refresh();
+    alreadyMarked.value = true;
   }
 }

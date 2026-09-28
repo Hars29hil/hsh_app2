@@ -145,6 +145,7 @@ class StudentAttendanceStatus {
   final String startTime;
   final String endTime;
   final List<AttendanceScheduleItem> allSchedules;
+  final Map<String, dynamic> rawSchedules;
 
   const StudentAttendanceStatus({
     required this.alreadyMarked,
@@ -154,6 +155,7 @@ class StudentAttendanceStatus {
     required this.startTime,
     required this.endTime,
     required this.allSchedules,
+    this.rawSchedules = const {},
   });
 
   AttendanceType? get activeType =>
@@ -161,11 +163,12 @@ class StudentAttendanceStatus {
 
   factory StudentAttendanceStatus.fromJson(Map<String, dynamic> json) {
     List schedulesList = [];
+    Map<String, dynamic> rawSchedulesMap = {};
     if (json['all_schedules'] is List) {
       schedulesList = json['all_schedules'] as List;
     } else if (json['schedules'] is Map) {
-      final map = json['schedules'] as Map;
-      schedulesList = map.entries.map((e) {
+      rawSchedulesMap = Map<String, dynamic>.from(json['schedules'] as Map);
+      schedulesList = rawSchedulesMap.entries.map((e) {
         final val = e.value is Map ? e.value as Map : {};
         return {
           'session_key': e.key,
@@ -188,6 +191,7 @@ class StudentAttendanceStatus {
       startTime: (json['start_time'] ?? '00:00').toString(),
       endTime: (json['end_time'] ?? '00:00').toString(),
       allSchedules: parsedSchedules,
+      rawSchedules: rawSchedulesMap,
     );
   }
 }

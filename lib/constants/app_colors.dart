@@ -69,6 +69,7 @@ class AppColors {
   static const Color warningOrange = Color(0xFFC17817);
   /// Error: #C62828
   static const Color cancelledRed = Color(0xFFC62828);
+  static const Color errorRed = Color(0xFFC62828);
   /// Info / Pending: #1565C0
   static const Color pendingBlue = Color(0xFF1565C0);
 

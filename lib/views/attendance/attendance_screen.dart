@@ -47,28 +47,98 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
     super.dispose();
   }
 
-  Future<void> _performBleScan(AttendanceType type) async {
+  void _showResultDialog({
+    required String title,
+    required String message,
+    required IconData icon,
+    required Color color,
+  }) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 24),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          message,
+          style: const TextStyle(
+            fontSize: 15,
+            color: AppColors.textPrimary,
+            height: 1.5,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(
+              'OK',
+              style: TextStyle(fontWeight: FontWeight.bold, color: color),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _performBleScan(AttendanceType type, {required bool isAttendanceOpen}) async {
+    if (controller.alreadyMarked.value) {
+      _showResultDialog(
+        title: 'Already Marked',
+        message: 'Your attendance is already marked for today. Come back tomorrow!',
+        icon: Icons.info_outline,
+        color: AppColors.primary,
+      );
+      return;
+    }
+
+    if (!isAttendanceOpen) {
+      _showResultDialog(
+        title: 'Not Available',
+        message: 'Attendance is currently closed. Please check the schedule on your dashboard for the next available session.',
+        icon: Icons.schedule,
+        color: AppColors.warningOrange,
+      );
+      return;
+    }
+
     try {
       final record = await controller.markWithBle(type);
       if (record != null) {
-        Get.snackbar(
-          'Success!',
-          'Your attendance for ${type.label} has been recorded.',
-          backgroundColor: AppColors.successGreen,
-          colorText: Colors.white,
-          snackPosition: SnackPosition.BOTTOM,
-          margin: const EdgeInsets.all(AppDimens.gapMd),
+        _showResultDialog(
+          title: 'Success!',
+          message: 'Your attendance has been marked successfully. Have a great evening!',
+          icon: Icons.check_circle_outline,
+          color: AppColors.successGreen,
         );
       }
     } catch (e) {
-      Get.snackbar(
-        'Could Not Mark Attendance',
-        e.toString().replaceAll('Exception: ', ''),
-        backgroundColor: Colors.red.shade600,
-        colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
-        margin: const EdgeInsets.all(AppDimens.gapMd),
-        duration: const Duration(seconds: 5),
+      _showResultDialog(
+        title: 'Could Not Mark Attendance',
+        message: controller.friendlyError(e),
+        icon: Icons.error_outline,
+        color: AppColors.errorRed,
       );
     }
   }
@@ -442,9 +512,13 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                 schedules.first;
 
             final activeType = targetItem.attendanceType;
-            final isAttendanceOpen = liveItem != null && (statusData?.attendanceActive ?? true);
-            final isActiveMarked = controller.todayStatus[activeType] != null ||
-                (statusData?.alreadyMarked == true && statusData?.activeType == activeType);
+            final isBackendActive = controller.attendanceActive.value || (statusData?.attendanceActive == true);
+            final isTimingActive = liveItem != null;
+            final isAttendanceOpen = isBackendActive || isTimingActive;
+
+            final isAlreadyMarked = controller.alreadyMarked.value ||
+                (statusData?.alreadyMarked == true) ||
+                controller.todayStatus[activeType] != null;
 
             final activeSessionName = targetItem.sessionName;
             final activeTiming = '${targetItem.startTime} – ${targetItem.endTime}';
@@ -484,7 +558,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                                   padding: const EdgeInsets.all(24.0),
                                   child: Column(
                                     children: [
-                                      if (isActiveMarked)
+                                      if (isAlreadyMarked)
                                         _buildSuccessBanner(activeSessionName)
                                       else if (!isAttendanceOpen)
                                         Padding(
@@ -514,7 +588,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                                               ),
                                               const SizedBox(height: 6),
                                               Text(
-                                                'Next session ($activeSessionName) window is $activeTiming.',
+                                                controller.startTime.isNotEmpty && controller.endTime.isNotEmpty
+                                                    ? 'Attendance is closed.\nAvailable between ${controller.startTime.value} and ${controller.endTime.value}'
+                                                    : 'Next session ($activeSessionName) window is $activeTiming.',
                                                 textAlign: TextAlign.center,
                                                 style: const TextStyle(
                                                   fontSize: 13,
@@ -581,7 +657,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                                             label: 'Mark Attendance Now',
                                             onPressed: isMarking
                                                 ? null
-                                                : () => _performBleScan(activeType),
+                                                : () => _performBleScan(activeType, isAttendanceOpen: isAttendanceOpen),
                                             isLoading: isMarking,
                                           ),
                                         ),
@@ -620,9 +696,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                                 ...schedules.map((item) {
                                   final type = item.attendanceType;
                                   final markedTime = controller.todayStatus[type];
-                                  final isMarked = markedTime != null;
+                                  final isMarked = markedTime != null || (isAlreadyMarked && targetItem.sessionKey == item.sessionKey);
                                   final isWindowOpen = _isTimingActiveNow(item.startTime, item.endTime);
-                                  final isActiveNow = !isMarked && isWindowOpen && isAttendanceOpen;
+                                  final isActiveNow = !isMarked && (isWindowOpen || (isBackendActive && targetItem.sessionKey == item.sessionKey));
                                   final timingStr = '${item.startTime} – ${item.endTime}';
 
                                   return _buildSessionScheduleTile(

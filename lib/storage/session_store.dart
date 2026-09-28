@@ -29,6 +29,7 @@ class SessionStore {
   static const _kStudentCode = 'user_student_code';
   static const _kBloodGroup = 'student_blood_group';
   static const _kVehicle = 'student_vehicle';
+  static const _kLastAttendanceDate = 'last_attendance_date';
 
   static const _timeout = Duration(seconds: 5);
 
@@ -42,6 +43,7 @@ class SessionStore {
   String? _cachedStudentCode;
   String? _cachedBloodGroup;
   String? _cachedVehicle;
+  String? _cachedLastAttendanceDate;
 
   /// Synchronous access to the currently loaded token in memory.
   String? get currentToken => _cachedToken;
@@ -214,6 +216,17 @@ class SessionStore {
     if (_cachedRoom != null) return _cachedRoom;
     _cachedRoom = await _read(_kRoom);
     return _cachedRoom;
+  }
+
+  Future<String?> get lastAttendanceDate async {
+    if (_cachedLastAttendanceDate != null) return _cachedLastAttendanceDate;
+    _cachedLastAttendanceDate = await _read(_kLastAttendanceDate);
+    return _cachedLastAttendanceDate;
+  }
+
+  Future<void> saveLastAttendanceDate(String date) {
+    _cachedLastAttendanceDate = date;
+    return _write(_kLastAttendanceDate, date);
   }
 
   Future<bool> get hasSession async => (await token) != null;
