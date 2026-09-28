@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../common_enums/attendance_type.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_dimens.dart';
+import '../../constants/app_text_styles.dart';
 import '../../network/responses/attendance/attendance_models.dart';
 import '../shared/widgets/app_button.dart';
 import '../shared/widgets/app_card.dart';
@@ -52,53 +53,115 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
     required String message,
     required IconData icon,
     required Color color,
+    String buttonLabel = 'Got it',
   }) {
-    showDialog(
+    showGeneralDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.15),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, color: color, size: 24),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                title,
-                style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss',
+      barrierColor: Colors.black.withValues(alpha: 0.45),
+      transitionDuration: const Duration(milliseconds: 250),
+      pageBuilder: (ctx, anim1, anim2) => const SizedBox.shrink(),
+      transitionBuilder: (ctx, anim, secondaryAnim, child) {
+        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutBack);
+        return ScaleTransition(
+          scale: curved,
+          child: FadeTransition(
+            opacity: anim,
+            child: Dialog(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 400),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(AppDimens.radiusXl),
+                    border: Border.all(
+                      color: AppColors.borderLight,
+                      width: 1.2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.shadow.withValues(alpha: 0.16),
+                        blurRadius: 30,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Concentric Icon Badge
+                      Container(
+                        width: 68,
+                        height: 68,
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: Container(
+                            width: 50,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              color: color.withValues(alpha: 0.15),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              icon,
+                              color: color,
+                              size: 26,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: AppDimens.gapLg),
+
+                      // Title
+                      Text(
+                        title,
+                        textAlign: TextAlign.center,
+                        style: AppTextStyles.headline.copyWith(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.textPrimary,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                      const SizedBox(height: AppDimens.gapSm),
+
+                      // Message
+                      Text(
+                        message,
+                        textAlign: TextAlign.center,
+                        style: AppTextStyles.bodyMd.copyWith(
+                          fontSize: 14,
+                          color: AppColors.textSecondary,
+                          height: 1.5,
+                        ),
+                      ),
+                      const SizedBox(height: AppDimens.gapXl),
+
+                      // Action Button
+                      SizedBox(
+                        width: double.infinity,
+                        child: AppButton(
+                          label: buttonLabel,
+                          onPressed: () => Navigator.of(ctx).pop(),
+                          variant: AppButtonVariant.primary,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ],
-        ),
-        content: Text(
-          message,
-          style: const TextStyle(
-            fontSize: 15,
-            color: AppColors.textPrimary,
-            height: 1.5,
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(
-              'OK',
-              style: TextStyle(fontWeight: FontWeight.bold, color: color),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -107,18 +170,20 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
       _showResultDialog(
         title: 'Already Marked',
         message: 'Your attendance is already marked for today. Come back tomorrow!',
-        icon: Icons.info_outline,
+        icon: Icons.info_outline_rounded,
         color: AppColors.primary,
+        buttonLabel: 'Understood',
       );
       return;
     }
 
     if (!isAttendanceOpen) {
       _showResultDialog(
-        title: 'Not Available',
+        title: 'Attendance Closed',
         message: 'Attendance is currently closed. Please check the schedule on your dashboard for the next available session.',
-        icon: Icons.schedule,
+        icon: Icons.schedule_rounded,
         color: AppColors.warningOrange,
+        buttonLabel: 'Got it',
       );
       return;
     }
@@ -127,18 +192,20 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
       final record = await controller.markWithBle(type);
       if (record != null) {
         _showResultDialog(
-          title: 'Success!',
-          message: 'Your attendance has been marked successfully. Have a great evening!',
-          icon: Icons.check_circle_outline,
+          title: 'Attendance Marked!',
+          message: 'Your attendance for ${type.label} has been recorded successfully. Have a great day!',
+          icon: Icons.check_circle_rounded,
           color: AppColors.successGreen,
+          buttonLabel: 'Great',
         );
       }
     } catch (e) {
       _showResultDialog(
         title: 'Could Not Mark Attendance',
         message: controller.friendlyError(e),
-        icon: Icons.error_outline,
-        color: AppColors.errorRed,
+        icon: Icons.error_outline_rounded,
+        color: AppColors.cancelledRed,
+        buttonLabel: 'Dismiss',
       );
     }
   }
