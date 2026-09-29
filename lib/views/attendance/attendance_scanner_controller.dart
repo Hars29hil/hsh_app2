@@ -102,7 +102,7 @@ class AttendanceScannerController extends GetxController {
       // Update student dashboard if registered
       if (Get.isRegistered<AttendanceController>()) {
         Get.find<AttendanceController>().onAttendanceMarked(record);
-        Get.find<AttendanceController>().load();
+        Get.find<AttendanceController>().load(showLoading: false);
       }
     } on ApiException catch (e) {
       developer.log('API Exception on scan: ${e.message}', name: 'AttendanceScanner');

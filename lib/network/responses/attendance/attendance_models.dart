@@ -8,6 +8,7 @@ class AttendanceRecord {
   final DateTime date;
   final DateTime time;
   final AttendanceType type;
+  final String sessionKey;
   final bool viaCode;
   final String? ip;
 
@@ -17,6 +18,7 @@ class AttendanceRecord {
     required this.date,
     required this.time,
     required this.type,
+    this.sessionKey = 'aarti',
     required this.viaCode,
     this.ip,
   });
@@ -31,7 +33,8 @@ class AttendanceRecord {
       return DateTime.now().toUtc();
     }
 
-    final rawType = json['type']?.toString() ?? json['session_type']?.toString() ?? 'aarti';
+    final rawType = json['type']?.toString() ?? json['session_type']?.toString() ?? json['session_key']?.toString() ?? 'aarti';
+    final sKey = (json['session_key'] ?? json['session_type'] ?? json['type'] ?? rawType).toString().toLowerCase().trim();
     final dateVal = parseDate(json['date'] ?? json['session_date'] ?? json['marked_at']);
     DateTime timeVal;
     if (json['time'] != null || json['marked_at'] != null) {
@@ -59,6 +62,7 @@ class AttendanceRecord {
       date: dateVal,
       time: timeVal,
       type: AttendanceTypeX.fromApi(rawType),
+      sessionKey: sKey.isNotEmpty ? sKey : AttendanceTypeX.fromApi(rawType).apiValue,
       viaCode: json['viaCode'] == true,
       ip: json['ip']?.toString(),
     );

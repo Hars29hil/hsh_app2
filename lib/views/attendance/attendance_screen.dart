@@ -165,11 +165,17 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
     );
   }
 
-  Future<void> _performBleScan(AttendanceType type, {required bool isAttendanceOpen}) async {
-    if (controller.alreadyMarked.value) {
+  Future<void> _performBleScan(
+    AttendanceType type, {
+    required bool isAttendanceOpen,
+    String? sessionKey,
+    String? sessionName,
+  }) async {
+    final effectiveKey = sessionKey ?? type.apiValue;
+    if (controller.isSessionMarked(effectiveKey, type)) {
       _showResultDialog(
         title: 'Already Marked',
-        message: 'Your attendance is already marked for today. Come back tomorrow!',
+        message: 'Your attendance is already marked for ${sessionName ?? type.label}.',
         icon: Icons.info_outline_rounded,
         color: AppColors.primary,
         buttonLabel: 'Understood',
@@ -189,11 +195,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
     }
 
     try {
-      final record = await controller.markWithBle(type);
+      final record = await controller.markWithBle(type, sessionKey: effectiveKey);
       if (record != null) {
         _showResultDialog(
           title: 'Attendance Marked!',
-          message: 'Your attendance for ${type.label} has been recorded successfully. Have a great day!',
+          message: 'Your attendance for ${sessionName ?? type.label} has been recorded successfully. Have a great day!',
           icon: Icons.check_circle_rounded,
           color: AppColors.successGreen,
           buttonLabel: 'Great',
@@ -345,6 +351,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
 
   Widget _buildSessionScheduleTile({
     required AttendanceType type,
+    required String sessionKey,
     required String name,
     required String timing,
     required bool isMarked,
@@ -357,7 +364,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
     final primaryColor = style.primaryColor;
     final iconData = _resolveIcon(iconName, style.icon);
 
-    return Container(
+    final tileContent = Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
@@ -437,7 +444,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                   ],
                 ),
                 const SizedBox(height: 3),
-                Row(
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 6,
+                  runSpacing: 2,
                   children: [
                     Text(
                       timing,
@@ -446,8 +456,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                         color: AppColors.textMuted,
                       ),
                     ),
-                    if (lateTime != null && lateTime.isNotEmpty) ...[
-                      const SizedBox(width: 6),
+                    if (lateTime != null && lateTime.isNotEmpty)
                       Text(
                         '• Late after $lateTime',
                         style: const TextStyle(
@@ -456,7 +465,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                           color: AppColors.warningOrange,
                         ),
                       ),
-                    ],
                   ],
                 ),
               ],
@@ -525,6 +533,21 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
         ],
       ),
     );
+
+    if (isActiveNow && !isMarked) {
+      return InkWell(
+        onTap: () => _performBleScan(
+          type,
+          isAttendanceOpen: true,
+          sessionKey: sessionKey,
+          sessionName: name,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        child: tileContent,
+      );
+    }
+
+    return tileContent;
   }
 
   @override
@@ -582,10 +605,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
             final isBackendActive = controller.attendanceActive.value || (statusData?.attendanceActive == true);
             final isTimingActive = liveItem != null;
             final isAttendanceOpen = isBackendActive || isTimingActive;
-
-            final isAlreadyMarked = controller.alreadyMarked.value ||
-                (statusData?.alreadyMarked == true) ||
-                controller.todayStatus[activeType] != null;
+            final isAlreadyMarked = controller.isSessionMarked(
+              targetItem.sessionKey,
+              activeType,
+            );
 
             final activeSessionName = targetItem.sessionName;
             final activeTiming = '${targetItem.startTime} – ${targetItem.endTime}';
@@ -724,7 +747,12 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                                             label: 'Mark Attendance Now',
                                             onPressed: isMarking
                                                 ? null
-                                                : () => _performBleScan(activeType, isAttendanceOpen: isAttendanceOpen),
+                                                : () => _performBleScan(
+                                                    activeType,
+                                                    isAttendanceOpen: isAttendanceOpen,
+                                                    sessionKey: targetItem.sessionKey,
+                                                    sessionName: targetItem.sessionName,
+                                                  ),
                                             isLoading: isMarking,
                                           ),
                                         ),
@@ -762,14 +790,16 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                                 // List of All Sessions
                                 ...schedules.map((item) {
                                   final type = item.attendanceType;
-                                  final markedTime = controller.todayStatus[type];
-                                  final isMarked = markedTime != null || (isAlreadyMarked && targetItem.sessionKey == item.sessionKey);
+                                  final sKey = item.sessionKey.toLowerCase().trim();
+                                  final markedTime = controller.getSessionMarkedTime(sKey, type);
+                                  final isMarked = markedTime != null;
                                   final isWindowOpen = _isTimingActiveNow(item.startTime, item.endTime);
-                                  final isActiveNow = !isMarked && (isWindowOpen || (isBackendActive && targetItem.sessionKey == item.sessionKey));
+                                  final isActiveNow = !isMarked && (isWindowOpen || (isBackendActive && targetItem.sessionKey.toLowerCase().trim() == sKey));
                                   final timingStr = '${item.startTime} – ${item.endTime}';
 
                                   return _buildSessionScheduleTile(
                                     type: type,
+                                    sessionKey: item.sessionKey,
                                     name: item.sessionName,
                                     timing: timingStr,
                                     isMarked: isMarked,

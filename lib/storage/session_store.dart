@@ -1,5 +1,6 @@
 import 'dart:developer' as developer;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:intl/intl.dart';
 import '../common_enums/user_role.dart';
 
 /// Cached session/identity, replacing SharedPreferences['auth_token'] /
@@ -227,6 +228,31 @@ class SessionStore {
   Future<void> saveLastAttendanceDate(String date) {
     _cachedLastAttendanceDate = date;
     return _write(_kLastAttendanceDate, date);
+  }
+
+  Future<void> saveMarkedSessionDate(String sessionKey, String date) {
+    return _write('last_att_${sessionKey.toLowerCase().trim()}', date);
+  }
+
+  Future<String?> getMarkedSessionDate(String sessionKey) {
+    return _read('last_att_${sessionKey.toLowerCase().trim()}');
+  }
+
+  Future<void> saveMarkedSessionTime(String sessionKey, DateTime time) {
+    final today = DateFormat('yyyy-MM-dd').format(time);
+    return _write(
+      'last_att_time_${sessionKey.toLowerCase().trim()}_$today',
+      time.toIso8601String(),
+    );
+  }
+
+  Future<DateTime?> getMarkedSessionTime(String sessionKey) async {
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final str = await _read('last_att_time_${sessionKey.toLowerCase().trim()}_$today');
+    if (str != null && str.isNotEmpty) {
+      return DateTime.tryParse(str);
+    }
+    return null;
   }
 
   Future<bool> get hasSession async => (await token) != null;

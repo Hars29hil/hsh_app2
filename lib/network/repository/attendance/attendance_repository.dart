@@ -366,7 +366,14 @@ class AttendanceRepository {
       );
       final rawData = response.data['data'];
       final record = AttendanceRecord.fromJson(
-        rawData is Map<String, dynamic> ? rawData : {'type': request.type.apiValue, 'viaCode': request.viaCode},
+        rawData is Map<String, dynamic>
+            ? rawData
+            : {
+                'type': request.sessionKey ?? request.type.apiValue,
+                'session_key': request.sessionKey ?? request.type.apiValue,
+                'session_type': request.sessionKey ?? request.type.apiValue,
+                'viaCode': request.viaCode,
+              },
       );
       _mockMarkedToday[request.type] = record.time;
       return record;
@@ -381,6 +388,7 @@ class AttendanceRepository {
         date: now,
         time: now,
         type: request.type,
+        sessionKey: request.sessionKey ?? request.type.apiValue,
         viaCode: request.viaCode,
       );
       _mockMarkedToday[request.type] = now;

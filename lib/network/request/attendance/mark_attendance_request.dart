@@ -6,24 +6,30 @@ import '../../../common_enums/attendance_type.dart';
 /// The backend automatically resolves the student's Aadhar from the Bearer JWT token.
 class MarkAttendanceRequest {
   final AttendanceType type;
+  final String? sessionKey;
   final bool viaCode;
   final String? qrToken;
   final int? rssi; // Added for BLE proximity attendance
 
   const MarkAttendanceRequest({
     required this.type,
+    this.sessionKey,
     this.viaCode = true,
     this.qrToken,
     this.rssi,
   });
 
-  Map<String, dynamic> toJson() => {
-    'type': type.apiValue,
-    'session_type': type.apiValue,
-    if (qrToken != null && qrToken!.isNotEmpty) 'qrToken': qrToken,
-    if (rssi != null) 'rssi': rssi,
-    'viaCode': viaCode,
-  };
+  Map<String, dynamic> toJson() {
+    final key = sessionKey ?? type.apiValue;
+    return {
+      'type': key,
+      'session_type': key,
+      'session_key': key,
+      if (qrToken != null && qrToken!.isNotEmpty) 'qrToken': qrToken,
+      if (rssi != null) 'rssi': rssi,
+      'viaCode': viaCode,
+    };
+  }
 }
 
 /// Used for the operator's / admin's "attendance on behalf of" manual flow.

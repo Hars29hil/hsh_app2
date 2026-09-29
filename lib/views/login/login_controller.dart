@@ -23,7 +23,7 @@ class LoginController extends GetxController {
   void onInit() {
     super.onInit();
     studentIdController = TextEditingController();
-    _attemptAutoLogin();
+    _requestAppPermissionsAndAutoLogin();
   }
 
   @override
@@ -39,11 +39,27 @@ class LoginController extends GetxController {
     return null;
   }
 
+  Future<void> _requestAppPermissionsAndAutoLogin() async {
+    if (!Platform.isAndroid) return;
+    try {
+      // Prompt user for all essential permissions on login page open:
+      // Bluetooth, Location (for ESP-32 attendance), and Phone (for auto SIM login)
+      await [
+        Permission.phone,
+        Permission.bluetoothScan,
+        Permission.bluetoothConnect,
+        Permission.location,
+      ].request();
+    } catch (_) {}
+
+    await _attemptAutoLogin();
+  }
+
   Future<void> _attemptAutoLogin() async {
     if (!Platform.isAndroid) return;
     try {
-      final status = await Permission.phone.request();
-      if (!status.isGranted) return;
+      final phoneStatus = await Permission.phone.status;
+      if (!phoneStatus.isGranted) return;
 
       final hasSim = await MobileNumber.hasPhonePermission;
       if (!hasSim) return;

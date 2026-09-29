@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// Fixed vocabulary per spec §7.3 — exactly these five, no more, no less.
-enum AttendanceType { aarti, morning, lunch, dinner, night, sabha }
+enum AttendanceType { aarti, morning, lunch, dinner, night, sabha, demo }
 
 extension AttendanceTypeX on AttendanceType {
   static AttendanceType fromApi(String value) {
@@ -11,6 +11,9 @@ extension AttendanceTypeX on AttendanceType {
         v == 'assembly' ||
         v == 'sabha') {
       return AttendanceType.sabha;
+    }
+    if (v == 'demo') {
+      return AttendanceType.demo;
     }
     return AttendanceType.values.firstWhere(
       (e) => e.name.toLowerCase() == v,
@@ -34,6 +37,8 @@ extension AttendanceTypeX on AttendanceType {
         return 'Night Attendance';
       case AttendanceType.sabha:
         return 'Sabha';
+      case AttendanceType.demo:
+        return 'Demo Attendance';
     }
   }
 
@@ -50,6 +55,8 @@ extension AttendanceTypeX on AttendanceType {
         return Icons.bedtime_outlined;
       case AttendanceType.sabha:
         return Icons.groups_outlined;
+      case AttendanceType.demo:
+        return Icons.auto_awesome_outlined;
     }
   }
 }

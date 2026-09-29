@@ -85,6 +85,16 @@ class AttendanceEventStyle {
           softBackgroundColor: AppColors.cancelledRed.withValues(alpha: 0.12),
           timingHint: 'Scheduled assembly session',
         );
+      case AttendanceType.demo:
+        return AttendanceEventStyle(
+          type: AttendanceType.demo,
+          label: 'Demo Attendance',
+          emoji: '✨',
+          icon: Icons.local_fire_department_rounded,
+          primaryColor: AppColors.primary,
+          softBackgroundColor: AppColors.primary.withValues(alpha: 0.12),
+          timingHint: 'Demo session',
+        );
     }
   }
 

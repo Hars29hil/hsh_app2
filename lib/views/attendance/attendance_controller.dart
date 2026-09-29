@@ -24,6 +24,7 @@ class AttendanceController extends GetxController with LoadStateMixin {
   final rawSchedules = <String, dynamic>{}.obs;
 
   final todayStatus = <AttendanceType, DateTime?>{}.obs;
+  final todaySessionStatus = <String, DateTime?>{}.obs;
   final studentStatus = Rxn<StudentAttendanceStatus>();
   final schedulesList = <AttendanceScheduleItem>[].obs;
   final markingType = Rxn<AttendanceType>();
@@ -33,6 +34,16 @@ class AttendanceController extends GetxController with LoadStateMixin {
   void onInit() {
     super.onInit();
     load();
+  }
+
+  bool isSessionMarked(String sessionKey, AttendanceType type) {
+    final key = sessionKey.toLowerCase().trim();
+    return todaySessionStatus[key] != null;
+  }
+
+  DateTime? getSessionMarkedTime(String sessionKey, AttendanceType type) {
+    final key = sessionKey.toLowerCase().trim();
+    return todaySessionStatus[key] ?? todayStatus[type];
   }
 
   String friendlyError(dynamic e) {
@@ -93,21 +104,11 @@ class AttendanceController extends GetxController with LoadStateMixin {
     return cleaned;
   }
 
-  Future<void> load() => guard(() async {
+  Future<void> load({bool showLoading = true}) => guard(() async {
     try {
-      // Check local cached attendance for today
-      try {
-        final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-        final markedDate = await SessionStore.instance.lastAttendanceDate;
-        if (markedDate == today) {
-          alreadyMarked.value = true;
-        }
-      } catch (_) {}
-
       // 1. Fetch student status (mark status, active session, and DB schedules if authenticated)
       final sStatus = await _repository.getStudentStatus();
       studentStatus.value = sStatus;
-      alreadyMarked.value = sStatus.alreadyMarked || alreadyMarked.value;
       attendanceActive.value = sStatus.attendanceActive;
       startTime.value = sStatus.startTime;
       endTime.value = sStatus.endTime;
@@ -124,59 +125,119 @@ class AttendanceController extends GetxController with LoadStateMixin {
         schedulesList.assignAll(sStatus.allSchedules);
       }
 
-      if (alreadyMarked.value && sStatus.activeType != null) {
-        todayStatus[sStatus.activeType!] = DateTime.now();
+      // 3. Load locally cached attendance timestamp per session for today
+      for (final s in schedulesList) {
+        final key = s.sessionKey.toLowerCase().trim();
+        final localMarkedTime = await SessionStore.instance.getMarkedSessionTime(key);
+        if (localMarkedTime != null) {
+          todaySessionStatus[key] = localMarkedTime;
+          todayStatus[s.attendanceType] = localMarkedTime;
+        }
       }
+
+      // 4. Fetch today's actual attendance records from backend history
+      try {
+        final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+        final logs = await _repository.history(
+          from: DateTime.parse(todayStr),
+          to: DateTime.now(),
+        );
+        for (final log in logs) {
+          final sKey = log.sessionKey.toLowerCase().trim();
+          todaySessionStatus[sKey] = log.time;
+          todayStatus[log.type] = log.time;
+        }
+      } catch (_) {}
+
+      // 5. If server status indicates an active session is marked, record it for that session specifically
+      if (sStatus.alreadyMarked && sStatus.activeSessionType != null) {
+        final activeKey = sStatus.activeSessionType!.toLowerCase().trim();
+        if (todaySessionStatus[activeKey] == null) {
+          todaySessionStatus[activeKey] = DateTime.now();
+        }
+      }
+
+      todaySessionStatus.refresh();
+      todayStatus.refresh();
     } catch (_) {}
-  });
+  }, showLoading: showLoading);
 
   /// Mark attendance directly or after a scan
   Future<AttendanceRecord?> mark(
     AttendanceType type, {
+    String? sessionKey,
     required bool viaCode,
     String? qrToken,
     int? rssi,
   }) async {
     markingType.value = type;
     try {
+      final effectiveKey = sessionKey ?? type.apiValue;
       final result = await _repository.mark(
         MarkAttendanceRequest(
           type: type,
+          sessionKey: effectiveKey,
           viaCode: viaCode,
           qrToken: qrToken,
           rssi: rssi ?? -50,
         ),
       );
+      final key = effectiveKey.toLowerCase().trim();
+      todaySessionStatus[key] = result.time;
+      todaySessionStatus.refresh();
       todayStatus[type] = result.time;
       todayStatus.refresh();
-      await load();
+
+      try {
+        final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+        await SessionStore.instance.saveLastAttendanceDate(today);
+        await SessionStore.instance.saveMarkedSessionDate(key, today);
+        await SessionStore.instance.saveMarkedSessionTime(key, result.time);
+      } catch (_) {}
+
+      await load(showLoading: false);
       return result;
     } finally {
       markingType.value = null;
     }
   }
 
-  Future<AttendanceRecord?> markWithBle(AttendanceType type) async {
+  Future<AttendanceRecord?> markWithBle(
+    AttendanceType type, {
+    String? sessionKey,
+  }) async {
     if (markingType.value != null || isMarking.value) return null; // Already marking
     markingType.value = type;
     isMarking.value = true;
 
     try {
-      // 1. Request Bluetooth & Location Permissions gracefully across Android versions
+      // 1. Request Bluetooth & Location Permissions on Android
       if (Platform.isAndroid) {
-        try {
-          await [
-            Permission.location,
-            Permission.bluetoothScan,
-            Permission.bluetoothConnect,
-          ].request();
-        } catch (_) {}
+        final statuses = await [
+          Permission.bluetoothScan,
+          Permission.bluetoothConnect,
+          Permission.location,
+        ].request();
+
+        if (statuses[Permission.bluetoothScan]?.isPermanentlyDenied == true ||
+            statuses[Permission.bluetoothConnect]?.isPermanentlyDenied == true) {
+          throw Exception(
+            'Bluetooth permissions are needed to detect the floor ESP-32. Please allow them in your phone settings.',
+          );
+        }
+
+        // Android strictly requires Location Service (GPS toggle) to be ON to discover BLE beacons
+        final isLocationEnabled = await Permission.location.serviceStatus.isEnabled;
+        if (!isLocationEnabled) {
+          throw Exception(
+            'Please turn on Device Location (GPS) in your phone settings. Android requires Location to scan for Bluetooth beacons.',
+          );
+        }
       }
 
       // 2. Ensure Bluetooth Adapter is Turned On
       BluetoothAdapterState adapterState = await FlutterBluePlus.adapterState.first;
       if (adapterState != BluetoothAdapterState.on) {
-        // Try to turn on on Android if supported
         if (Platform.isAndroid) {
           try {
             await FlutterBluePlus.turnOn();
@@ -188,91 +249,128 @@ class AttendanceController extends GetxController with LoadStateMixin {
         }
       }
 
-      final normalizedTargetUuid = esp32ServiceUuid.replaceAll('-', '').toLowerCase();
+      if (FlutterBluePlus.isScanningNow) {
+        await FlutterBluePlus.stopScan();
+      }
+
+      final targetGuid = Guid("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
+      final normalizedTargetUuid = "4fafc2011fb5459e8fccc5c9c331914b";
       int detectedRssi = -50;
       bool deviceFound = false;
-      StreamSubscription<List<ScanResult>>? scanSubscription;
 
       // 3. Listen to BLE Advertisement Packets in proximity
-      final completer = Completer<void>();
-
-      scanSubscription = FlutterBluePlus.scanResults.listen((results) {
-        for (ScanResult r in results) {
+      final scanSubscription = FlutterBluePlus.scanResults.listen((results) {
+        for (final r in results) {
           final advData = r.advertisementData;
           final advName = (r.device.platformName.isNotEmpty
                   ? r.device.platformName
                   : advData.advName)
+              .trim()
               .toLowerCase();
 
-          // Match by Target Service UUID (4fafc201-1fb5-459e-8fcc-c5c9c331914b)
-          bool uuidMatches = advData.serviceUuids.any(
-            (u) => u.toString().replaceAll('-', '').toLowerCase() == normalizedTargetUuid,
-          );
+          bool uuidMatches = advData.serviceUuids.contains(targetGuid) ||
+              advData.serviceUuids.any((u) =>
+                  u.toString().replaceAll('-', '').toLowerCase() == normalizedTargetUuid);
 
-          // Match by Service Data keys
-          bool serviceDataMatches = advData.serviceData.keys.any(
-            (u) => u.toString().replaceAll('-', '').toLowerCase() == normalizedTargetUuid,
-          );
+          bool serviceDataMatches = advData.serviceData.containsKey(targetGuid) ||
+              advData.serviceData.keys.any((u) =>
+                  u.toString().replaceAll('-', '').toLowerCase() == normalizedTargetUuid);
 
-          // Match by Device Advertising Name
           bool nameMatches = advName.contains('hostel') ||
               advName.contains('esp32') ||
               advName.contains('floor') ||
               advName.contains('attendance') ||
               advName.contains('hams') ||
-              advName.contains('beacon');
+              advName.contains('beacon') ||
+              advName.contains('hsh') ||
+              advName.contains('avd');
 
           if (uuidMatches || serviceDataMatches || nameMatches) {
             deviceFound = true;
             detectedRssi = r.rssi;
             FlutterBluePlus.stopScan();
-            if (!completer.isCompleted) {
-              completer.complete();
-            }
             break;
           }
         }
       });
 
-      // 4. Start high-priority BLE scan (timeout 8 seconds)
+      // 4. Start high-priority BLE scan (timeout 10 seconds for reliable discovery)
       await FlutterBluePlus.startScan(
-        timeout: const Duration(seconds: 8),
+        timeout: const Duration(seconds: 10),
         androidScanMode: AndroidScanMode.lowLatency,
       );
 
-      // Wait until beacon is detected or scan times out
-      await Future.any([
-        completer.future,
-        FlutterBluePlus.isScanning.where((val) => val == false).first,
-      ]);
-
+      await FlutterBluePlus.isScanning.where((val) => val == false).first;
       await scanSubscription.cancel();
+
+      // Double check in lastScanResults in case last packet came at stop
+      if (!deviceFound) {
+        for (final r in FlutterBluePlus.lastScanResults) {
+          final advData = r.advertisementData;
+          final advName = (r.device.platformName.isNotEmpty
+                  ? r.device.platformName
+                  : advData.advName)
+              .trim()
+              .toLowerCase();
+
+          bool uuidMatches = advData.serviceUuids.contains(targetGuid) ||
+              advData.serviceUuids.any((u) =>
+                  u.toString().replaceAll('-', '').toLowerCase() == normalizedTargetUuid);
+
+          bool serviceDataMatches = advData.serviceData.containsKey(targetGuid) ||
+              advData.serviceData.keys.any((u) =>
+                  u.toString().replaceAll('-', '').toLowerCase() == normalizedTargetUuid);
+
+          bool nameMatches = advName.contains('hostel') ||
+              advName.contains('esp32') ||
+              advName.contains('floor') ||
+              advName.contains('attendance') ||
+              advName.contains('hams') ||
+              advName.contains('beacon') ||
+              advName.contains('hsh') ||
+              advName.contains('avd');
+
+          if (uuidMatches || serviceDataMatches || nameMatches) {
+            deviceFound = true;
+            detectedRssi = r.rssi;
+            break;
+          }
+        }
+      }
 
       if (!deviceFound) {
         throw Exception(
-          'Could not find the attendance beacon. Make sure you are close to an active ESP-32 device and try again.',
+          'Could not find the attendance beacon. Make sure you are in range of an active floor ESP-32 device and try again.',
         );
       }
 
+      final effectiveKey = sessionKey ?? type.apiValue;
       // 5. Send proximity verification with RSSI to backend (no Bluetooth pairing/connection needed)
       final result = await _repository.mark(
         MarkAttendanceRequest(
           type: type,
+          sessionKey: effectiveKey,
           viaCode: false,
           rssi: detectedRssi,
         ),
       );
 
+      final key = effectiveKey.toLowerCase().trim();
       // 6. Save attendance success locally and update state
       try {
         final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
         await SessionStore.instance.saveLastAttendanceDate(today);
+        await SessionStore.instance.saveMarkedSessionDate(key, today);
+        await SessionStore.instance.saveMarkedSessionTime(key, result.time);
       } catch (_) {}
 
-      alreadyMarked.value = true;
+      todaySessionStatus[key] = result.time;
+      todaySessionStatus.refresh();
       todayStatus[type] = result.time;
       todayStatus.refresh();
-      await load();
+
+      // Silent background refresh (no full screen reload / spinner)
+      await load(showLoading: false);
       return result;
     } finally {
       markingType.value = null;
@@ -281,8 +379,10 @@ class AttendanceController extends GetxController with LoadStateMixin {
   }
 
   void onAttendanceMarked(AttendanceRecord record) {
+    final key = record.sessionKey.toLowerCase().trim();
+    todaySessionStatus[key] = record.time;
+    todaySessionStatus.refresh();
     todayStatus[record.type] = record.time;
     todayStatus.refresh();
-    alreadyMarked.value = true;
   }
 }
