@@ -20,6 +20,10 @@ class AppConfig {
   static const String studentBasicDetailsAuthToken =
       'aF92Kx7QmN4Lp8Vz';
 
+  /// Live floor-wise BLE service UUID strings endpoint
+  static const String floorStringsUrl =
+      'https://attendentsnews.hpys.in/api/floors/strings';
+
   /// Server origin without the `/api` prefix — statically served uploads
   /// (e.g. complaint photos, mounted at `/uploads` — see server.ts) live
   /// here, not under `/api`.

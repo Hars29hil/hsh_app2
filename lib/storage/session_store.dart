@@ -3,18 +3,11 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:intl/intl.dart';
 import '../common_enums/user_role.dart';
 
-/// Cached session/identity, replacing SharedPreferences['auth_token'] /
-/// SharedPreferences['student_aadhar'] from the old app. Backed by
-/// flutter_secure_storage so the token is never in plaintext prefs.
+/// Single source of truth for the active user's session credentials.
 ///
-/// `aadhar` is resolved lazily from the fee-summary/laundry-balance calls
-/// (see AadharResolvingMixin) and cached here — it is never returned by
-/// login itself.
-///
-/// The first Keystore-backed read/write on some Android devices (notably
-/// Xiaomi/MIUI) can stall for a long time or hang outright. Every call is
-/// timeout-guarded so a slow Keystore never blocks app startup — a timeout
-/// is treated the same as "no value stored".
+/// Backed by [FlutterSecureStorage] so tokens survive app restart, but also
+/// caches in memory so synchronous checks (e.g. inside guards or interceptors)
+/// can inspect the token without an `await`.
 class SessionStore {
   SessionStore._();
   static final SessionStore instance = SessionStore._();
@@ -26,6 +19,7 @@ class SessionStore {
   static const _kEmail = 'user_email';
   static const _kName = 'user_name';
   static const _kRoom = 'student_room';
+  static const _kFloorId = 'user_floor_id';
   static const _kPhone = 'user_phone';
   static const _kStudentCode = 'user_student_code';
   static const _kBloodGroup = 'student_blood_group';
@@ -40,6 +34,7 @@ class SessionStore {
   String? _cachedName;
   String? _cachedAadhar;
   String? _cachedRoom;
+  int? _cachedFloorId;
   String? _cachedPhone;
   String? _cachedStudentCode;
   String? _cachedBloodGroup;
@@ -48,6 +43,9 @@ class SessionStore {
 
   /// Synchronous access to the currently loaded token in memory.
   String? get currentToken => _cachedToken;
+
+  /// Synchronous access to cached floor id in memory.
+  int? get currentFloorId => _cachedFloorId;
 
   Future<String?> _read(String key) async {
     try {
@@ -72,6 +70,17 @@ class SessionStore {
     }
   }
 
+  Future<void> _delete(String key) async {
+    try {
+      await _storage.delete(key: key).timeout(_timeout);
+    } catch (e) {
+      developer.log(
+        'SessionStore: delete($key) failed or timed out: $e',
+        name: 'SessionStore',
+      );
+    }
+  }
+
   Future<void> saveSession({
     required String token,
     required UserRole role,
@@ -81,17 +90,17 @@ class SessionStore {
     String? studentCode,
     String? aadhar,
     String? room,
+    int? floorId,
   }) async {
     _cachedToken = token;
     _cachedRole = role;
     _cachedEmail = email;
     _cachedName = name;
-    if (phone != null && phone.isNotEmpty) _cachedPhone = phone;
-    if (studentCode != null && studentCode.isNotEmpty) {
-      _cachedStudentCode = studentCode;
-    }
-    if (aadhar != null && aadhar.isNotEmpty) _cachedAadhar = aadhar;
-    if (room != null && room.isNotEmpty) _cachedRoom = room;
+    _cachedPhone = (phone != null && phone.isNotEmpty) ? phone : null;
+    _cachedStudentCode = (studentCode != null && studentCode.isNotEmpty) ? studentCode : null;
+    _cachedAadhar = (aadhar != null && aadhar.isNotEmpty) ? aadhar : null;
+    _cachedRoom = (room != null && room.isNotEmpty) ? room : null;
+    _cachedFloorId = floorId;
 
     await clearAadhar();
     final writes = <Future<void>>[
@@ -102,15 +111,26 @@ class SessionStore {
     ];
     if (phone != null && phone.isNotEmpty) {
       writes.add(_write(_kPhone, phone));
+    } else {
+      writes.add(_delete(_kPhone));
     }
     if (studentCode != null && studentCode.isNotEmpty) {
       writes.add(_write(_kStudentCode, studentCode));
+    } else {
+      writes.add(_delete(_kStudentCode));
     }
     if (aadhar != null && aadhar.isNotEmpty) {
       writes.add(_write(_kAadhar, aadhar));
     }
     if (room != null && room.isNotEmpty) {
       writes.add(_write(_kRoom, room));
+    } else {
+      writes.add(_delete(_kRoom));
+    }
+    if (floorId != null) {
+      writes.add(_write(_kFloorId, floorId.toString()));
+    } else {
+      writes.add(_delete(_kFloorId));
     }
     await Future.wait(writes);
   }
@@ -169,6 +189,8 @@ class SessionStore {
     return _write(_kStudentCode, code);
   }
 
+  String? get currentStudentCode => _cachedStudentCode;
+
   Future<String?> get cachedStudentCode async {
     if (_cachedStudentCode != null) return _cachedStudentCode;
     _cachedStudentCode = await _read(_kStudentCode);
@@ -219,6 +241,20 @@ class SessionStore {
     return _cachedRoom;
   }
 
+  Future<void> cacheFloorId(int floorId) {
+    _cachedFloorId = floorId;
+    return _write(_kFloorId, floorId.toString());
+  }
+
+  Future<int?> get cachedFloorId async {
+    if (_cachedFloorId != null) return _cachedFloorId;
+    final str = await _read(_kFloorId);
+    if (str != null && str.isNotEmpty) {
+      _cachedFloorId = int.tryParse(str);
+    }
+    return _cachedFloorId;
+  }
+
   Future<String?> get lastAttendanceDate async {
     if (_cachedLastAttendanceDate != null) return _cachedLastAttendanceDate;
     _cachedLastAttendanceDate = await _read(_kLastAttendanceDate);
@@ -264,10 +300,12 @@ class SessionStore {
     _cachedName = null;
     _cachedAadhar = null;
     _cachedRoom = null;
+    _cachedFloorId = null;
     _cachedPhone = null;
     _cachedStudentCode = null;
     _cachedBloodGroup = null;
     _cachedVehicle = null;
+    _cachedLastAttendanceDate = null;
 
     try {
       await _storage.deleteAll().timeout(_timeout);

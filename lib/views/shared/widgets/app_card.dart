@@ -13,6 +13,8 @@ class AppCard extends StatefulWidget {
   final Gradient? gradient;
   final double radius;
   final bool elevated;
+  final double? width;
+  final double? height;
 
   const AppCard({
     super.key,
@@ -23,6 +25,8 @@ class AppCard extends StatefulWidget {
     this.gradient,
     this.radius = AppDimens.radiusLg,
     this.elevated = true,
+    this.width,
+    this.height,
   });
 
   @override
@@ -49,6 +53,8 @@ class _AppCardState extends State<AppCard> {
         duration: const Duration(milliseconds: 120),
         curve: Curves.easeOut,
         child: AnimatedContainer(
+          width: widget.width,
+          height: widget.height,
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOut,
           decoration: BoxDecoration(

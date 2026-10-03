@@ -7,6 +7,7 @@ import '../../../storage/session_store.dart';
 import '../../api_client.dart';
 import '../../api_exception.dart';
 import '../../request/student_profile/update_profile_request.dart';
+import '../../responses/student_profile/student_basic_details.dart';
 
 class StudentProfileRepository {
   final Dio _dio = Get.find<ApiClient>().dio;
@@ -64,6 +65,149 @@ class StudentProfileRepository {
       }
     }
     return _cachedExternalList ?? [];
+  }
+
+  void setMockExternalList(List<Map<String, dynamic>> list) {
+    _cachedExternalList = list;
+    _lastExternalFetchTime = DateTime.now();
+  }
+
+  Future<StudentBasicDetails> fetchBasicDetails({bool forceRefresh = false}) async {
+    // 1. Get logged-in student identifiers from session
+    final sessionCode = await SessionStore.instance.cachedStudentCode;
+    final sessionPhone = await SessionStore.instance.cachedPhone;
+    final sessionName = await SessionStore.instance.name;
+    final sessionRoom = await SessionStore.instance.cachedRoom;
+
+    final rawCode = sessionCode?.trim() ?? '';
+    final cleanCode = rawCode.replaceFirst(RegExp(r'^0+'), '');
+    final cleanPhone = sessionPhone?.trim().replaceAll(RegExp(r'\D'), '') ?? '';
+    final phone10 = cleanPhone.length >= 10 ? cleanPhone.substring(cleanPhone.length - 10) : '';
+    final cleanName = sessionName?.trim().toLowerCase() ?? '';
+    final cleanRoom = sessionRoom?.trim() ?? '';
+
+    // 2. Fetch from external AVD API
+    final list = await fetchExternalStudentList(forceRefresh: forceRefresh);
+
+    if (list.isNotEmpty) {
+      // Pass 1: Strict Bank Code / Student ID match
+      if (cleanCode.isNotEmpty) {
+        for (final item in list) {
+          final itemBank = (item['bankCode']?.toString() ?? '').trim();
+          final itemNormBank = itemBank.replaceFirst(RegExp(r'^0+'), '');
+          if (itemBank == rawCode || itemNormBank == cleanCode || rawCode == itemNormBank) {
+            if (itemBank.isNotEmpty) {
+              await SessionStore.instance.cacheStudentCode(itemBank);
+            }
+            return StudentBasicDetails.fromAvdJson(item);
+          }
+        }
+      }
+
+      // Pass 2: Strict Phone match (last 10 digits must match an actual 10-digit number)
+      if (phone10.length >= 10) {
+        for (final item in list) {
+          final itemPhone = (item['phone']?.toString() ?? '').trim().replaceAll(RegExp(r'\D'), '');
+          final item10 = itemPhone.length >= 10 ? itemPhone.substring(itemPhone.length - 10) : '';
+          final itemWa = (item['whatsAppNumber']?.toString() ?? '').trim().replaceAll(RegExp(r'\D'), '');
+          final wa10 = itemWa.length >= 10 ? itemWa.substring(itemWa.length - 10) : '';
+
+          final isPhoneMatch = item10.length >= 10 && item10 == phone10;
+          final isWaMatch = wa10.length >= 10 && wa10 == phone10;
+          final isEndsMatch = itemPhone.length >= 10 && itemPhone.endsWith(phone10);
+
+          if (isPhoneMatch || isWaMatch || isEndsMatch) {
+            final itemBank = (item['bankCode']?.toString() ?? '').trim();
+            if (itemBank.isNotEmpty) {
+              await SessionStore.instance.cacheStudentCode(itemBank);
+            }
+            return StudentBasicDetails.fromAvdJson(item);
+          }
+        }
+      }
+
+      // Pass 3: Match by Room & Student Name
+      if (cleanRoom.isNotEmpty && cleanName.isNotEmpty) {
+        for (final item in list) {
+          final itemRoom = (item['room']?.toString() ?? '').trim();
+          if (itemRoom == cleanRoom) {
+            final fName = (item['firstName']?.toString() ?? '').trim().toLowerCase();
+            final lName = (item['lastName']?.toString() ?? '').trim().toLowerCase();
+            if ((fName.length >= 3 && cleanName.contains(fName)) || (lName.length >= 3 && cleanName.contains(lName))) {
+              final itemBank = (item['bankCode']?.toString() ?? '').trim();
+              if (itemBank.isNotEmpty) {
+                await SessionStore.instance.cacheStudentCode(itemBank);
+              }
+              return StudentBasicDetails.fromAvdJson(item);
+            }
+          }
+        }
+      }
+
+      // Pass 4: Match by Full Name exact or both parts
+      if (cleanName.length >= 4) {
+        for (final item in list) {
+          final fName = (item['firstName']?.toString() ?? '').trim().toLowerCase();
+          final lName = (item['lastName']?.toString() ?? '').trim().toLowerCase();
+          final full = '$fName $lName'.trim();
+          if (full.length >= 4 && (full == cleanName || (fName.length >= 3 && lName.length >= 3 && cleanName.contains(fName) && cleanName.contains(lName)))) {
+            final itemBank = (item['bankCode']?.toString() ?? '').trim();
+            if (itemBank.isNotEmpty) {
+              await SessionStore.instance.cacheStudentCode(itemBank);
+            }
+            return StudentBasicDetails.fromAvdJson(item);
+          }
+        }
+      }
+    }
+
+    // 3. Fallback to local session store values (NEVER fall back to a random student from the list!)
+    return StudentBasicDetails.fallback(
+      name: sessionName,
+      room: sessionRoom,
+      phone: sessionPhone,
+      bankCode: sessionCode,
+    );
+  }
+
+  /// Finds student details by phone number (matching last 10 digits against student or whatsapp phone)
+  Future<StudentBasicDetails?> findStudentByPhone(String phone) async {
+    final clean = phone.trim().replaceAll(RegExp(r'\D'), '');
+    if (clean.length < 10) return null;
+    final phone10 = clean.substring(clean.length - 10);
+
+    final list = await fetchExternalStudentList();
+    for (final item in list) {
+      final itemPhone = (item['phone']?.toString() ?? '').trim().replaceAll(RegExp(r'\D'), '');
+      final item10 = itemPhone.length >= 10 ? itemPhone.substring(itemPhone.length - 10) : '';
+      final itemWa = (item['whatsAppNumber']?.toString() ?? '').trim().replaceAll(RegExp(r'\D'), '');
+      final wa10 = itemWa.length >= 10 ? itemWa.substring(itemWa.length - 10) : '';
+
+      final isPhoneMatch = item10.length >= 10 && item10 == phone10;
+      final isWaMatch = wa10.length >= 10 && wa10 == phone10;
+      final isEndsMatch = itemPhone.length >= 10 && itemPhone.endsWith(phone10);
+
+      if (isPhoneMatch || isWaMatch || isEndsMatch) {
+        return StudentBasicDetails.fromAvdJson(item);
+      }
+    }
+    return null;
+  }
+
+  Future<StudentBasicDetails?> findStudentByCode(String code) async {
+    final rawCode = code.trim();
+    if (rawCode.isEmpty) return null;
+    final cleanCode = rawCode.replaceFirst(RegExp(r'^0+'), '');
+
+    final list = await fetchExternalStudentList();
+    for (final item in list) {
+      final itemBank = (item['bankCode']?.toString() ?? '').trim();
+      final itemNormBank = itemBank.replaceFirst(RegExp(r'^0+'), '');
+      if (itemBank == rawCode || itemNormBank == cleanCode || rawCode == itemNormBank) {
+        return StudentBasicDetails.fromAvdJson(item);
+      }
+    }
+    return null;
   }
 
   /// Match a student from the external list using multiple identifier heuristics:

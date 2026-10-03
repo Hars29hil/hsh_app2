@@ -10,6 +10,8 @@ class MarkAttendanceRequest {
   final bool viaCode;
   final String? qrToken;
   final int? rssi; // Added for BLE proximity attendance
+  final int? floorId;
+  final String? serviceUuid;
 
   const MarkAttendanceRequest({
     required this.type,
@@ -17,6 +19,8 @@ class MarkAttendanceRequest {
     this.viaCode = true,
     this.qrToken,
     this.rssi,
+    this.floorId,
+    this.serviceUuid,
   });
 
   Map<String, dynamic> toJson() {
@@ -27,6 +31,12 @@ class MarkAttendanceRequest {
       'session_key': key,
       if (qrToken != null && qrToken!.isNotEmpty) 'qrToken': qrToken,
       if (rssi != null) 'rssi': rssi,
+      if (floorId != null) 'floor_id': floorId,
+      if (serviceUuid != null && serviceUuid!.isNotEmpty) ...{
+        'service_uuid': serviceUuid,
+        'serviceUuid': serviceUuid,
+        'string_value': serviceUuid,
+      },
       'viaCode': viaCode,
     };
   }

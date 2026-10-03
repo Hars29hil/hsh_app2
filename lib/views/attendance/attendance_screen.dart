@@ -15,6 +15,12 @@ import '../shared/widgets/radar_animation.dart';
 import 'attendance_controller.dart';
 import 'attendance_event_style.dart';
 
+enum SessionTimingState {
+  active,
+  upcoming,
+  closed,
+}
+
 class AttendanceScreen extends StatefulWidget {
   const AttendanceScreen({super.key});
 
@@ -195,6 +201,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
     }
 
     try {
+      controller.isMarking.value = true;
+      controller.markingType.value = type;
       final record = await controller.markWithBle(type, sessionKey: effectiveKey);
       if (record != null) {
         _showResultDialog(
@@ -216,7 +224,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
     }
   }
 
-  bool _isTimingActiveNow(String startTime, String endTime) {
+  SessionTimingState _getSessionTimingState(String startTime, String endTime) {
     try {
       final now = DateTime.now();
       final curMins = now.hour * 60 + now.minute;
@@ -225,15 +233,34 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
       final startMins = startParts[0] * 60 + startParts[1];
       final endMins = endParts[0] * 60 + endParts[1];
 
+      // 00:00 - 00:00 or invalid is closed
+      if (startMins == 0 && endMins == 0) {
+        return SessionTimingState.closed;
+      }
+
       if (startMins <= endMins) {
-        return curMins >= startMins && curMins <= endMins;
+        if (curMins >= startMins && curMins <= endMins) {
+          return SessionTimingState.active;
+        } else if (curMins < startMins) {
+          return SessionTimingState.upcoming;
+        } else {
+          return SessionTimingState.closed;
+        }
       } else {
         // Overnight session (e.g. 22:30 to 05:00)
-        return curMins >= startMins || curMins <= endMins;
+        if (curMins >= startMins || curMins <= endMins) {
+          return SessionTimingState.active;
+        } else {
+          return SessionTimingState.upcoming;
+        }
       }
     } catch (_) {
-      return false;
+      return SessionTimingState.closed;
     }
+  }
+
+  bool _isTimingActiveNow(String startTime, String endTime) {
+    return _getSessionTimingState(startTime, endTime) == SessionTimingState.active;
   }
 
   AttendanceScheduleItem? _findNextUpcomingSession(List<AttendanceScheduleItem> list) {
@@ -298,50 +325,102 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
   Widget _buildSuccessBanner(String sessionName) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 28),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppColors.successGreen.withValues(alpha: 0.15),
-            AppColors.primary.withValues(alpha: 0.08),
-          ],
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: AppColors.successGreen.withValues(alpha: 0.4),
+          width: 1.5,
         ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.successGreen.withValues(alpha: 0.3)),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.successGreen.withValues(alpha: 0.08),
+            blurRadius: 20,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
-            padding: const EdgeInsets.all(16),
+            width: 72,
+            height: 72,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: AppColors.successGreen.withValues(alpha: 0.2),
+              color: AppColors.successGreen.withValues(alpha: 0.12),
+              border: Border.all(
+                color: AppColors.successGreen.withValues(alpha: 0.28),
+                width: 2.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.successGreen.withValues(alpha: 0.2),
+                  blurRadius: 14,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
-            child: const Icon(
-              Icons.check_circle,
-              color: AppColors.successGreen,
-              size: 48,
+            child: const Center(
+              child: Icon(
+                Icons.check_circle_rounded,
+                color: AppColors.successGreen,
+                size: 46,
+              ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           const Text(
             'Attendance Marked!',
+            textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 20,
+              fontSize: 22,
               fontWeight: FontWeight.w800,
-              color: AppColors.successGreen,
+              color: AppColors.textPrimary,
+              letterSpacing: -0.3,
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            'You have successfully marked attendance for $sessionName.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 14,
-              color: AppColors.successGreen.withValues(alpha: 0.8),
-              height: 1.5,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              'You have successfully marked attendance for $sessionName.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: AppColors.textSecondary,
+                height: 1.45,
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            decoration: BoxDecoration(
+              color: AppColors.successGreen.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: AppColors.successGreen.withValues(alpha: 0.2),
+                width: 1,
+              ),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.verified_rounded, size: 15, color: AppColors.successGreen),
+                SizedBox(width: 6),
+                Text(
+                  'Verified via Bluetooth Beacon',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.successGreen,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -357,6 +436,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
     required bool isMarked,
     required DateTime? markedTime,
     required bool isActiveNow,
+    required SessionTimingState timingState,
     String? iconName,
     String? lateTime,
   }) {
@@ -458,7 +538,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                     ),
                     if (lateTime != null && lateTime.isNotEmpty)
                       Text(
-                        '• Late after $lateTime',
+                        ' \u2022 Late after $lateTime',
                         style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
@@ -514,6 +594,22 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                 ),
               ),
             )
+          else if (timingState == SessionTimingState.closed)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceMuted,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                'Closed',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textMuted,
+                ),
+              ),
+            )
           else
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -534,20 +630,38 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
       ),
     );
 
-    if (isActiveNow && !isMarked) {
-      return InkWell(
-        onTap: () => _performBleScan(
-          type,
-          isAttendanceOpen: true,
-          sessionKey: sessionKey,
-          sessionName: name,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        child: tileContent,
-      );
-    }
-
-    return tileContent;
+    return InkWell(
+      onTap: () {
+        if (isMarked) {
+          _showResultDialog(
+            title: 'Already Marked',
+            message: 'Your attendance is already marked for $name.',
+            icon: Icons.check_circle_rounded,
+            color: AppColors.successGreen,
+            buttonLabel: 'Understood',
+          );
+        } else if (isActiveNow) {
+          _performBleScan(
+            type,
+            isAttendanceOpen: true,
+            sessionKey: sessionKey,
+            sessionName: name,
+          );
+        } else {
+          _showResultDialog(
+            title: 'Attendance Closed',
+            message: timingState == SessionTimingState.closed
+                ? 'Attendance for $name has already closed for today ($timing).'
+                : 'Attendance for $name is not open yet ($timing).',
+            icon: Icons.schedule_rounded,
+            color: AppColors.warningOrange,
+            buttonLabel: 'Got it',
+          );
+        }
+      },
+      borderRadius: BorderRadius.circular(16),
+      child: tileContent,
+    );
   }
 
   @override
@@ -560,10 +674,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
           errorMessage: controller.errorMessage.value,
           onRetry: controller.load,
           builder: (context) {
-            final statusData = controller.studentStatus.value;
-            final isMarking = controller.markingType.value != null;
-
-            // Resolve list of session schedules from API or fallback defaults
             final schedules = controller.schedulesList.isNotEmpty
                 ? controller.schedulesList.toList()
                 : const [
@@ -576,45 +686,36 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                       lateTime: '19:10',
                     ),
                     AttendanceScheduleItem(
-                      sessionKey: 'weekly_assembly',
-                      sessionName: 'Weekly Assembly',
-                      iconName: 'users',
-                      startTime: '20:50',
-                      endTime: '21:20',
-                      lateTime: '21:16',
-                    ),
-                    AttendanceScheduleItem(
-                      sessionKey: 'night',
-                      sessionName: 'Night',
-                      iconName: 'moon',
-                      startTime: '22:30',
-                      endTime: '23:05',
+                      sessionKey: 'cheshta',
+                      sessionName: 'Cheshta',
+                      iconName: 'book-open',
+                      startTime: '21:15',
+                      endTime: '22:00',
+                      lateTime: '21:40',
                     ),
                   ];
 
-            // Resolve currently active or next upcoming session
-            final liveItem = schedules.firstWhereOrNull(
-              (s) => _isTimingActiveNow(s.startTime, s.endTime),
-            );
+            // Determine active session or next upcoming session
+            AttendanceScheduleItem? activeItem;
+            for (final s in schedules) {
+              final isMarked = controller.isSessionMarked(
+                s.sessionKey,
+                AttendanceTypeX.fromApi(s.sessionKey),
+              );
+              if (!isMarked && _isTimingActiveNow(s.startTime, s.endTime)) {
+                activeItem = s;
+                break;
+              }
+            }
+            final nextUpcoming = _findNextUpcomingSession(schedules);
+            final displayItem = activeItem ?? nextUpcoming ?? schedules.first;
 
-            final AttendanceScheduleItem targetItem = liveItem ??
-                _findNextUpcomingSession(schedules) ??
-                schedules.first;
-
-            final activeType = targetItem.attendanceType;
-            final isBackendActive = controller.attendanceActive.value || (statusData?.attendanceActive == true);
-            final isTimingActive = liveItem != null;
-            final isAttendanceOpen = isBackendActive || isTimingActive;
-            final isAlreadyMarked = controller.isSessionMarked(
-              targetItem.sessionKey,
-              activeType,
-            );
-
-            final activeSessionName = targetItem.sessionName;
-            final activeTiming = '${targetItem.startTime} – ${targetItem.endTime}';
+            final activeType = AttendanceTypeX.fromApi(displayItem.sessionKey);
+            final isDisplayMarked = controller.isSessionMarked(displayItem.sessionKey, activeType);
+            final isTimingActive = _isTimingActiveNow(displayItem.startTime, displayItem.endTime);
 
             return AppRefreshIndicator(
-              onRefresh: controller.load,
+              onRefresh: () => controller.load(showLoading: false),
               child: CustomScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
@@ -637,22 +738,27 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                       opacity: _fadeAnimation,
                       child: Center(
                         child: Padding(
-                          padding: const EdgeInsets.all(AppDimens.screenPadding),
+                          padding: const EdgeInsets.fromLTRB(
+                            AppDimens.screenPadding,
+                            AppDimens.gapLg,
+                            AppDimens.screenPadding,
+                            AppDimens.gapXxl,
+                          ),
                           child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 480),
+                            constraints: const BoxConstraints(maxWidth: 520),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // Attendance Action Card
+                                // Main Attendance Action Card / Success Banner
                                 AppCard(
-                                  padding: const EdgeInsets.all(24.0),
+                                  padding: const EdgeInsets.all(22.0),
                                   child: Column(
                                     children: [
-                                      if (isAlreadyMarked)
-                                        _buildSuccessBanner(activeSessionName)
-                                      else if (!isAttendanceOpen)
+                                      if (isDisplayMarked)
+                                        _buildSuccessBanner(displayItem.sessionName)
+                                      else if (!isTimingActive)
                                         Padding(
-                                          padding: const EdgeInsets.symmetric(vertical: 20),
+                                          padding: const EdgeInsets.symmetric(vertical: 18),
                                           child: Column(
                                             children: [
                                               Container(
@@ -678,9 +784,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                                               ),
                                               const SizedBox(height: 6),
                                               Text(
-                                                controller.startTime.isNotEmpty && controller.endTime.isNotEmpty
-                                                    ? 'Attendance is closed.\nAvailable between ${controller.startTime.value} and ${controller.endTime.value}'
-                                                    : 'Next session ($activeSessionName) window is $activeTiming.',
+                                                'Next session (${displayItem.sessionName}) window is ${displayItem.startTime} - ${displayItem.endTime}.',
                                                 textAlign: TextAlign.center,
                                                 style: const TextStyle(
                                                   fontSize: 13,
@@ -691,78 +795,88 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                                             ],
                                           ),
                                         )
-                                      else ...[
-                                        RadarAnimation(
-                                          isScanning: isMarking,
-                                          color: AppColors.primary,
-                                          child: ShaderMask(
-                                            shaderCallback: (bounds) =>
-                                                const LinearGradient(
-                                                  colors: [
-                                                    AppColors.primary,
-                                                    AppColors.primaryLight,
-                                                  ],
-                                                ).createShader(bounds),
-                                            child: const Icon(
-                                              Icons.bluetooth_searching,
-                                              size: 48,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 16),
-                                        Text(
-                                          isMarking
-                                              ? 'Scanning Beacon...'
-                                              : 'Mark $activeSessionName',
-                                          style: const TextStyle(
-                                            fontSize: 20,
-                                            fontWeight: FontWeight.w800,
-                                            color: AppColors.textPrimary,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          'Session window: $activeTiming',
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                            color: AppColors.primary,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        const Text(
-                                          'Make sure you are on your floor. Bluetooth will automatically connect to the floor device.',
-                                          textAlign: TextAlign.center,
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            color: AppColors.textMuted,
-                                            height: 1.4,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 20),
-                                        SizedBox(
-                                          width: double.infinity,
-                                          child: AppButton(
-                                            label: 'Mark Attendance Now',
-                                            onPressed: isMarking
-                                                ? null
-                                                : () => _performBleScan(
-                                                    activeType,
-                                                    isAttendanceOpen: isAttendanceOpen,
-                                                    sessionKey: targetItem.sessionKey,
-                                                    sessionName: targetItem.sessionName,
+                                      else
+                                        Obx(() {
+                                          final isMarking = controller.isMarking.value;
+                                          return Column(
+                                            children: [
+                                              RadarAnimation(
+                                                isScanning: isMarking,
+                                                color: AppColors.primary,
+                                                child: ShaderMask(
+                                                  shaderCallback: (bounds) => const LinearGradient(
+                                                    colors: [
+                                                      AppColors.primary,
+                                                      AppColors.primaryLight,
+                                                    ],
+                                                  ).createShader(bounds),
+                                                  child: const Icon(
+                                                    Icons.bluetooth_searching,
+                                                    size: 48,
+                                                    color: Colors.white,
                                                   ),
-                                            isLoading: isMarking,
-                                          ),
-                                        ),
-                                      ],
+                                                ),
+                                              ),
+                                              const SizedBox(height: 16),
+                                              Text(
+                                                isMarking
+                                                    ? 'Scanning Floor Device...'
+                                                    : 'Mark ${displayItem.sessionName}',
+                                                style: const TextStyle(
+                                                  fontSize: 20,
+                                                  fontWeight: FontWeight.w800,
+                                                  color: AppColors.textPrimary,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                'Session window: ${displayItem.startTime} - ${displayItem.endTime}',
+                                                style: const TextStyle(
+                                                  fontSize: 12.5,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: AppColors.primary,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 8),
+                                              Obx(() {
+                                                final floorName = controller.assignedFloorName.value.isNotEmpty
+                                                    ? controller.assignedFloorName.value
+                                                    : 'Floor ${controller.assignedFloorId.value}';
+                                                return Text(
+                                                  'Make sure you are on $floorName. Bluetooth will automatically verify with the floor beacon.',
+                                                  textAlign: TextAlign.center,
+                                                  style: const TextStyle(
+                                                    fontSize: 13,
+                                                    color: AppColors.textMuted,
+                                                    height: 1.4,
+                                                  ),
+                                                );
+                                              }),
+                                              const SizedBox(height: 20),
+                                              SizedBox(
+                                                width: double.infinity,
+                                                child: AppButton(
+                                                  label: isMarking ? 'Verifying Proximity...' : 'Mark Attendance Now',
+                                                  onPressed: isMarking
+                                                      ? null
+                                                      : () => _performBleScan(
+                                                            activeType,
+                                                            isAttendanceOpen: true,
+                                                            sessionKey: displayItem.sessionKey,
+                                                            sessionName: displayItem.sessionName,
+                                                          ),
+                                                  isLoading: isMarking,
+                                                ),
+                                              ),
+                                            ],
+                                          );
+                                        }),
                                     ],
                                   ),
                                 ),
                                 const SizedBox(height: 24),
 
-                                // Today's Full Schedule Section
+                                // 3. Today's Full Schedule Section Header
                                 Row(
                                   children: [
                                     Container(
@@ -775,7 +889,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                                     ),
                                     const SizedBox(width: 8),
                                     const Text(
-                                      'Today\'s Sessions',
+                                      "Today's Schedule",
                                       style: TextStyle(
                                         fontSize: 17,
                                         fontWeight: FontWeight.w800,
@@ -785,17 +899,17 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 12),
+                                const SizedBox(height: 14),
 
-                                // List of All Sessions
+                                // 4. List of All Routine Sessions
                                 ...schedules.map((item) {
-                                  final type = item.attendanceType;
+                                  final type = AttendanceTypeX.fromApi(item.sessionKey);
                                   final sKey = item.sessionKey.toLowerCase().trim();
                                   final markedTime = controller.getSessionMarkedTime(sKey, type);
                                   final isMarked = markedTime != null;
-                                  final isWindowOpen = _isTimingActiveNow(item.startTime, item.endTime);
-                                  final isActiveNow = !isMarked && (isWindowOpen || (isBackendActive && targetItem.sessionKey.toLowerCase().trim() == sKey));
-                                  final timingStr = '${item.startTime} – ${item.endTime}';
+                                  final timingState = _getSessionTimingState(item.startTime, item.endTime);
+                                  final isActiveNow = !isMarked && (timingState == SessionTimingState.active);
+                                  final timingStr = '${item.startTime} - ${item.endTime}';
 
                                   return _buildSessionScheduleTile(
                                     type: type,
@@ -805,6 +919,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                                     isMarked: isMarked,
                                     markedTime: markedTime,
                                     isActiveNow: isActiveNow,
+                                    timingState: timingState,
                                     iconName: item.iconName,
                                     lateTime: item.lateTime,
                                   );

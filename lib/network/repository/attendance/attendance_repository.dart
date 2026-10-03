@@ -346,8 +346,8 @@ class AttendanceRepository {
 
     return StudentAttendanceStatus(
       alreadyMarked: false,
-      attendanceActive: true,
-      activeSessionType: 'night',
+      attendanceActive: false,
+      activeSessionType: null,
       sessionName: 'Night Attendance',
       startTime: '22:30',
       endTime: '23:05',

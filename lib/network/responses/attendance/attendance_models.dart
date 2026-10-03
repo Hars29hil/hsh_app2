@@ -110,6 +110,45 @@ class AttendanceScheduleItem {
     final rawEnd = (json['end_time'] ?? json['end'] ?? '00:00').toString();
     final rawLate = json['late_time']?.toString();
 
+    String start = rawStart.length >= 5 ? rawStart.substring(0, 5) : rawStart;
+    String end = rawEnd.length >= 5 ? rawEnd.substring(0, 5) : rawEnd;
+    String? late = rawLate != null && rawLate.isNotEmpty && rawLate != 'null'
+        ? (rawLate.length >= 5 ? rawLate.substring(0, 5) : rawLate)
+        : null;
+
+    if (json['day_schedules'] is List) {
+      final daysList = json['day_schedules'] as List;
+      final now = DateTime.now();
+      const weekdays = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+      final todayStr = weekdays[now.weekday - 1];
+
+      Map<String, dynamic>? todaySlot;
+      for (final slot in daysList) {
+        if (slot is Map && slot['days'] is List) {
+          final slotDays = (slot['days'] as List).map((d) => d.toString().toLowerCase().trim()).toList();
+          if (slotDays.contains(todayStr)) {
+            todaySlot = Map<String, dynamic>.from(slot);
+            break;
+          }
+        }
+      }
+
+      if (todaySlot != null) {
+        final sStart = todaySlot['startTime']?.toString();
+        final sEnd = todaySlot['endTime']?.toString();
+        final sLate = todaySlot['lateTime']?.toString();
+        if (sStart != null && sStart.isNotEmpty) {
+          start = sStart.length >= 5 ? sStart.substring(0, 5) : sStart;
+        }
+        if (sEnd != null && sEnd.isNotEmpty) {
+          end = sEnd.length >= 5 ? sEnd.substring(0, 5) : sEnd;
+        }
+        if (sLate != null && sLate.isNotEmpty && sLate != 'null') {
+          late = sLate.length >= 5 ? sLate.substring(0, 5) : sLate;
+        }
+      }
+    }
+
     return AttendanceScheduleItem(
       id: json['id'] is int
           ? json['id'] as int
@@ -117,11 +156,9 @@ class AttendanceScheduleItem {
       sessionKey: (json['session_key'] ?? json['key'] ?? 'aarti').toString().toLowerCase(),
       sessionName: (json['session_name'] ?? json['name'] ?? 'Session').toString(),
       iconName: (json['icon_name'] ?? 'moon').toString(),
-      startTime: rawStart.length >= 5 ? rawStart.substring(0, 5) : rawStart,
-      endTime: rawEnd.length >= 5 ? rawEnd.substring(0, 5) : rawEnd,
-      lateTime: rawLate != null && rawLate.isNotEmpty && rawLate != 'null'
-          ? (rawLate.length >= 5 ? rawLate.substring(0, 5) : rawLate)
-          : null,
+      startTime: start,
+      endTime: end,
+      lateTime: late,
       isForAllStudents: json['is_for_all_students'] as bool? ?? true,
       isActive: json['is_active'] as bool? ?? true,
     );
